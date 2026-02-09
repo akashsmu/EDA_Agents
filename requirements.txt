@@ -1,0 +1,15 @@
+streamlit
+langchain
+langgraph
+openai
+pandas
+matplotlib
+seaborn
+plotly
+openpyxl
+python-dotenv
+sweetviz
+missingno
+dtale
+plotnine
+pytimetk

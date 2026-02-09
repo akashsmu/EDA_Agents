@@ -18,6 +18,11 @@ seaborn = "^0.13.0"
 plotly = "^5.18.0"
 openpyxl = "^3.1.2"
 python-dotenv = "^1.0.1"
+sweetviz = "^2.3.1"
+missingno = "^0.5.2"
+dtale = "^3.9.0"
+plotnine = "^0.12.1"
+pytimetk = "^0.2.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0.0"
