@@ -1,7 +1,12 @@
+import sys
+import os
+sys.path.append(os.path.join(os.getcwd(), "src"))
+
 import streamlit as st
 import pandas as pd
 import os
 import json
+import base64
 from langchain_openai import ChatOpenAI
 from langchain_community.callbacks.manager import get_openai_callback
 
@@ -86,8 +91,8 @@ with tab2:
         if st.button("Missing Values"):
              content, artifact = visualize_missing.invoke({"data_raw": st.session_state["data_raw"]})
              st.write(content)
-             st.image(base64.b64decode(artifact["matrix_plot"]), caption="Matrix Plot")
-             import base64
+             for plot_name, plot_data in artifact.items():
+                 st.image(base64.b64decode(plot_data), caption=plot_name.replace('_', ' ').title())
     
     with col3:
         target_col = st.selectbox("Select Target for Correlation", options=pd.DataFrame(st.session_state["data_raw"]).columns)

@@ -11,33 +11,56 @@ An intelligent, agentic framework for Exploratory Data Analysis (EDA) powered by
 - **Advanced EDA Tools**:
     - **Sweetviz**: Comprehensive automated EDA reports.
     - **Missingno**: Visual analysis of missing data.
-    - **Correlation Funnel**: Identify drivers of target variables.
-    - **D-Tale**: Interactive data exploration.
 - **Sandboxed Execution**: Generated code is executed in a secure subprocess.
 - **Interactive UI**: User-friendly Streamlit interface for chat, tools, and reports.
 
 ## 🛠️ Installation
 
-1.  **Clone the repository**:
-    ```bash
-    git clone <repository-url>
-    cd EDA_Agents
-    ```
+### Prerequisites
+- **Python 3.10+** (check with `python3 --version`)
 
-2.  **Install dependencies using Poetry**:
-    ```bash
-    poetry install
-    ```
+### Quick Start (Recommended)
 
-3.  **Set up environment variables**:
-    Create a `.env` file and add your OpenAI API key:
-    ```bash
-    OPENAI_API_KEY=sk-...
-    ```
+```bash
+git clone <repository-url>
+cd EDA_Agents
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+### Set Up Environment Variables
+
+Create a `.env` file in the project root:
+
+```bash
+echo "OPENAI_API_KEY=sk-your-key-here" > .env
+```
+
+### Alternative: Poetry
+
+> [!WARNING]
+> Poetry may fail to build certain C/Rust dependencies (scipy, tiktoken) if your system Python
+> or Poetry's internal Python doesn't have prebuilt wheels available.
+> If you hit build errors, use the pip approach above.
+
+```bash
+brew install pipx && pipx install poetry    # install Poetry
+pipx ensurepath && source ~/.zshrc          # add to PATH
+poetry config virtualenvs.in-project true   # create .venv in project
+poetry install                              # install dependencies
+```
 
 ## 🏃 Usage
 
-Run the Streamlit application:
+### With pip (venv)
+
+```bash
+source .venv/bin/activate
+streamlit run src/eda_agents/ui/app.py
+```
+
+### With Poetry
 
 ```bash
 poetry run streamlit run src/eda_agents/ui/app.py
@@ -46,12 +69,12 @@ poetry run streamlit run src/eda_agents/ui/app.py
 ### Workflow
 1.  **Upload Data**: Upload a CSV file in the sidebar.
 2.  **Chat & Plot**: Ask questions like "Plot a scatter of Age vs Fare" or "Drop rows with missing Age".
-3.  **EDA Tools**: Use the "Quick EDA Tools" tab for instant summaries, missing value plots, and correlation analysis.
-4.  **Reports**: Generate full HTML reports with Sweetviz or launch D-Tale for deep diving.
+3.  **EDA Tools**: Use the "Quick EDA Tools" tab for instant summaries and missing value plots.
+4.  **Reports**: Generate full HTML reports with Sweetviz.
 
 ## 🏗️ Architecture
 
-- `src/eda_agents/agents/`: Contains the agent logic (`visualization.py`, `wrangling.py`, `base.py`) and the graph orchestrator (`graph.py`).
+- `src/eda_agents/agents/`: Agent logic (`visualization.py`, `wrangling.py`, `base.py`) and graph orchestrator (`graph.py`).
 - `src/eda_agents/tools/`: Specialized tools for EDA (`eda.py`, `dataframe.py`).
 - `src/eda_agents/utils/`: Utility functions for sandboxed execution and plotting.
 - `src/eda_agents/ui/`: Streamlit application code.

@@ -70,17 +70,26 @@ class DataWranglingAgent(BaseAgent):
         return {"code": code, "retry_count": 0}
 
     def execute_wrangling_code(self, state: AgentState):
+        import tempfile
         code = state["code"]
-        df_json = json.dumps(state["data_raw"])
-        
-        wrapper_code = f"""
+
+        # Write data to a temp file instead of inlining via f-string
+        tmp = tempfile.NamedTemporaryFile(
+            mode="w", suffix=".json", delete=False, prefix="eda_wrangle_"
+        )
+        try:
+            json.dump(state["data_raw"], tmp)
+            tmp.close()
+
+            wrapper_code = f"""
 import pandas as pd
 import json
 {code}
 
 if __name__ == "__main__":
     try:
-        data = json.loads('''{df_json}''')
+        with open("{tmp.name}", "r") as f:
+            data = json.load(f)
         df = pd.DataFrame(data)
         cleaned_df = wrangle(df)
         print(cleaned_df.to_json(orient='records'))
@@ -88,17 +97,23 @@ if __name__ == "__main__":
         import sys
         print(e, file=sys.stderr)
 """
-        result = run_code_sandboxed_subprocess(wrapper_code)
-        
+            result = run_code_sandboxed_subprocess(wrapper_code)
+        finally:
+            import os
+            try:
+                os.unlink(tmp.name)
+            except OSError:
+                pass
+
         if "[Stderr]:" in result:
             error = result.split("[Stderr]:")[1].strip()
             return {"error": error}
-        
+
         try:
             wrangled_data = json.loads(result)
             return {"wrangled_data": wrangled_data, "error": None}
         except json.JSONDecodeError:
-             return {"error": f"Failed to parse output: {result}"}
+            return {"error": f"Failed to parse output: {result}"}
 
     def fix_wrangling_code(self, state: AgentState):
         error = state["error"]
