@@ -15,7 +15,7 @@ from eda_agents.tools.dataframe import get_dataframe_summary
 
 @tool(response_format="content")
 def explain_data(
-    data_raw: Annotated[dict, InjectedState("data_raw")],
+    data_raw: Annotated[Union[dict, list], InjectedState("data_raw")],
     n_sample: int = 30,
     skip_stats: bool = False,
 ):
@@ -42,7 +42,7 @@ def explain_data(
 
 @tool(response_format="content_and_artifact")
 def describe_dataset(
-    data_raw: Annotated[dict, InjectedState("data_raw")],
+    data_raw: Annotated[Union[dict, list], InjectedState("data_raw")],
 ) -> Tuple[str, Dict]:
     """
     Tool: describe_dataset
@@ -61,7 +61,7 @@ def describe_dataset(
 
 @tool(response_format="content_and_artifact")
 def visualize_missing(
-    data_raw: Annotated[dict, InjectedState("data_raw")], n_sample: int = None
+    data_raw: Annotated[Union[dict, list], InjectedState("data_raw")], n_sample: int = None
 ) -> Tuple[str, Dict]:
     """
     Tool: visualize_missing
@@ -102,7 +102,7 @@ def visualize_missing(
 
 @tool(response_format="content_and_artifact")
 def generate_correlation_funnel(
-    data_raw: Annotated[dict, InjectedState("data_raw")],
+    data_raw: Annotated[Union[dict, list], InjectedState("data_raw")],
     target: str,
     target_bin_index: Union[int, str] = -1,
     corr_method: str = "pearson",
@@ -185,7 +185,7 @@ def generate_correlation_funnel(
 
 @tool(response_format="content_and_artifact")
 def generate_sweetviz_report(
-    data_raw: Annotated[dict, InjectedState("data_raw")],
+    data_raw: Annotated[Union[dict, list], InjectedState("data_raw")],
     target: str = None,
     report_name: str = "sweetviz_report.html",
     report_directory: str = None,
@@ -245,7 +245,7 @@ def generate_sweetviz_report(
 
 @tool(response_format="content_and_artifact")
 def generate_dtale_report(
-    data_raw: Annotated[dict, InjectedState("data_raw")],
+    data_raw: Annotated[Union[dict, list], InjectedState("data_raw")],
     host: str = "localhost",
     port: int = 40000,
     open_browser: bool = False,
