@@ -15,6 +15,7 @@ from eda_agents.tools.eda import (
     visualize_missing, 
     generate_sweetviz_report,
 )
+from eda_agents.utils.logger import logger
 
 # Page Configuration
 st.set_page_config(
@@ -88,11 +89,13 @@ with st.sidebar:
         options=["🏠 Home", "💬 AI Chat Analysis", "📊 Visualize Data", "🧹 Wrangle Data", "📋 Deep Reports"],
         index=0 if st.session_state["data_raw"] is None else 1
     )
+    logger.debug(f"User navigated to: {navigation}")
     
     st.markdown("---")
     openai_api_key = st.text_input("OpenAI API Key", type="password", help="Required for agents to work.")
     
     if st.button("🔄 Reset Session", use_container_width=True):
+        logger.info("User requested session reset.")
         st.session_state["data_raw"] = None
         st.session_state["graph"] = None
         st.session_state["messages"] = []
@@ -119,8 +122,10 @@ if navigation == "🏠 Home":
         st.markdown("---")
         uploaded_file = st.file_uploader("📂 Upload a CSV to begin", type=["csv"])
         if uploaded_file:
+            logger.info(f"File uploaded: {uploaded_file.name}")
             df = pd.read_csv(uploaded_file)
             st.session_state["data_raw"] = df.to_dict(orient="records")
+            logger.info(f"Loaded {len(df)} rows into session state.")
             st.rerun()
     else:
         st.success("✅ Data Loaded! Use the sidebar to start analyzing.")
@@ -140,6 +145,7 @@ elif navigation == "💬 AI Chat Analysis":
             if not openai_api_key and "OPENAI_API_KEY" not in os.environ:
                 st.error("Please provide an OpenAI API Key in the sidebar.")
                 st.stop()
+            logger.info("Initializing LangGraph for Chat.")
             llm = ChatOpenAI(model="gpt-4", api_key=openai_api_key or os.environ["OPENAI_API_KEY"])
             st.session_state["graph"] = create_eda_graph(llm)
 
@@ -153,6 +159,7 @@ elif navigation == "💬 AI Chat Analysis":
         user_input = st.chat_input("Ask about your data (e.g., 'Show Age distribution', 'Drop columns X')")
         
         if user_input:
+            logger.info(f"User interaction: {user_input}")
             st.session_state["messages"].append({"role": "user", "content": user_input})
             with st.chat_message("user"):
                 st.write(user_input)
@@ -162,11 +169,13 @@ elif navigation == "💬 AI Chat Analysis":
                     "messages": [{"role": "user", "content": user_input}],
                     "data_raw": st.session_state["data_raw"]
                 }
+                logger.info("Invoking graph...")
                 result = st.session_state["graph"].invoke(initial_state, config={"configurable": {"thread_id": "1"}})
                 
                 final_output = result.get("final_output", {})
                 
                 if "wrangled_data" in final_output:
+                    logger.info("Data wrangling update detected in graph output.")
                     st.session_state["data_raw"] = final_output["wrangled_data"]
                     st.toast("✅ Data updated!")
                 
@@ -174,12 +183,14 @@ elif navigation == "💬 AI Chat Analysis":
                 response_image = None
                 
                 if "plotly_json" in final_output:
+                    logger.info("Visualization result received.")
                     response_image = final_output["plotly_json"]
                     response_content = "Here is the visualization:"
                 elif "wrangled_data" in final_output:
                     response_content = "I have updated the data as requested."
                 
                 if "error" in final_output and final_output["error"]:
+                    logger.error(f"Graph execution returned error: {final_output['error']}")
                     response_content = f"❌ Error: {final_output['error']}"
 
                 st.session_state["messages"].append({"role": "assistant", "content": response_content, "image": response_image})
@@ -204,6 +215,7 @@ elif navigation == "📊 Visualize Data":
                  st.markdown("#### 📝 Data Summary")
                  st.write("Generate a narrative overview of your columns and values.")
                  if st.button("Run Explainer", use_container_width=True):
+                      logger.info("UI Button: Explainer clicked.")
                       summary = explain_data.invoke({"data_raw": st.session_state["data_raw"]})
                       st.info(summary)
 
@@ -212,6 +224,7 @@ elif navigation == "📊 Visualize Data":
                  st.markdown("#### 🔍 Missing Data Audit")
                  st.write("Analyze gaps and missing values using Missingno.")
                  if st.button("Run Audit", use_container_width=True):
+                      logger.info("UI Button: Missing Data Audit clicked.")
                       res, artifact = visualize_missing.invoke({"data_raw": st.session_state["data_raw"]})
                       st.write(res)
                       for name, plot in artifact.items():
@@ -229,11 +242,12 @@ elif navigation == "🧹 Wrangle Data":
         col1, col2 = st.columns(2)
         with col1:
              if st.button("Remove Duplicate Rows", use_container_width=True):
-                  # This is just a placeholder to show it can be done via Chat
+                  logger.info("UI Button: Remove Duplicates suggested.")
                   st.session_state["messages"].append({"role": "user", "content": "Remove duplicate rows"})
                   st.info("Action sent to AI Chat. Switch to Chat tab to see results.")
         with col2:
              if st.button("Handle Missing Values (Fillna)", use_container_width=True):
+                  logger.info("UI Button: Handle Missing Values suggested.")
                   st.session_state["messages"].append({"role": "user", "content": "Fill missing values with mean for numeric and mode for categorical"})
                   st.info("Action sent to AI Chat.")
 
@@ -248,6 +262,7 @@ elif navigation == "📋 Deep Reports":
             st.markdown("#### 🍭 Sweetviz Full Report")
             st.write("Create a high-density, interactive HTML report with target analysis.")
             if st.button("Generate Detailed Report", use_container_width=True):
+                 logger.info("UI Button: Sweetviz Report clicked.")
                  with st.spinner("Analyzing..."):
                       res, artifact = generate_sweetviz_report.invoke({"data_raw": st.session_state["data_raw"], "include_html": True})
                       st.success("Report Ready!")

@@ -12,6 +12,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 from eda_agents.tools.dataframe import get_dataframe_summary
+from eda_agents.utils.logger import logger
 
 @tool(response_format="content")
 def explain_data(
@@ -33,11 +34,13 @@ def explain_data(
     Returns:
         str: Detailed DataFrame summary.
     """
-    print("    * Tool: explain_data")
+    logger.info("Executing tool: explain_data")
     result = get_dataframe_summary(
         pd.DataFrame(data_raw), n_sample=n_sample, skip_stats=skip_stats
     )
-    return result[0] if result else "No data summary available."
+    summary = result[0] if result else "No data summary available."
+    logger.info(f"Summary generated ({len(summary)} chars).")
+    return summary
 
 
 @tool(response_format="content_and_artifact")
@@ -50,12 +53,13 @@ def describe_dataset(
         Compute and return summary statistics for the dataset using pandas' describe() method.
         The tool provides both a textual summary and a structured artifact for further processing.
     """
-    print("    * Tool: describe_dataset")
+    logger.info("Executing tool: describe_dataset")
     df = pd.DataFrame(data_raw)
     description_df = df.describe(include="all")
     content = "Summary statistics computed using pandas describe()."
     flattened = description_df.reset_index().rename(columns={"index": "stat"})
     artifact = {"describe_df": flattened.to_dict(orient="list")}
+    logger.info("Dataset description computed successfully.")
     return content, artifact
 
 
@@ -68,10 +72,11 @@ def visualize_missing(
     Description:
         Missing value analysis using the missingno library. Generates a matrix plot, bar plot, and heatmap plot.
     """
-    print("    * Tool: visualize_missing")
+    logger.info(f"Executing tool: visualize_missing (sample size: {n_sample})")
     try:
         import missingno as msno
     except ImportError:
+        logger.error("missingno library not found.")
         raise ImportError(
             "Please install 'missingno': pip install missingno"
         )
@@ -83,6 +88,7 @@ def visualize_missing(
     encoded_plots = {}
 
     def create_and_encode_plot(plot_func, plot_name: str):
+        logger.debug(f"Generating missingno {plot_name} plot.")
         plt.figure(figsize=(8, 6))
         plot_func(df)
         plt.tight_layout()
@@ -97,6 +103,7 @@ def visualize_missing(
     encoded_plots["heatmap_plot"] = create_and_encode_plot(msno.heatmap, "heatmap")
 
     content = "Missing data visualizations (matrix, bar, heatmap) generated."
+    logger.info("Missing data visualizations completed.")
     return content, encoded_plots
 
 
@@ -115,10 +122,11 @@ def generate_correlation_funnel(
     Description:
         Correlation analysis using the correlation funnel method (pytimetk).
     """
-    print("    * Tool: generate_correlation_funnel")
+    logger.info(f"Executing tool: generate_correlation_funnel (target: {target})")
     try:
         import pytimetk as tk
     except ImportError:
+        logger.error("pytimetk library not found.")
         raise ImportError(
             "Please install 'pytimetk': pip install pytimetk"
         )
@@ -128,6 +136,7 @@ def generate_correlation_funnel(
     df = pd.DataFrame(data_raw)
 
     # Binarize
+    logger.debug("Binarizing data for correlation funnel.")
     df_binarized = df.binarize(
         n_bins=n_bins,
         thresh_infreq=thresh_infreq,
@@ -150,12 +159,15 @@ def generate_correlation_funnel(
             except IndexError:
                 full_target = matching_columns[-1]
 
+    logger.info(f"Using target column: {full_target}")
+
     # Correlate
     df_correlated = df_binarized.correlate(target=full_target, method=corr_method)
 
     # Plot (Static)
     encoded = None
     try:
+        logger.debug("Generating static funnel plot.")
         fig = df_correlated.plot_correlation_funnel(engine="plotnine", height=600)
         buf = BytesIO()
         fig.save(buf, format="png")
@@ -163,15 +175,18 @@ def generate_correlation_funnel(
         buf.seek(0)
         encoded = base64.b64encode(buf.getvalue()).decode("utf-8")
     except Exception as e:
+        logger.warning(f"Static plot failed: {e}")
         encoded = {"error": str(e)}
 
     # Plot (Interactive)
     fig_dict = None
     try:
+        logger.debug("Generating interactive plotly funnel.")
         fig = df_correlated.plot_correlation_funnel(engine="plotly", base_size=14)
         fig_json = pio.to_json(fig)
         fig_dict = json.loads(fig_json)
     except Exception as e:
+        logger.warning(f"Interactive plot failed: {e}")
         fig_dict = {"error": str(e)}
 
     content = f"Correlation funnel info for target '{full_target}'."
@@ -180,6 +195,7 @@ def generate_correlation_funnel(
         "plot_image": encoded,
         "plotly_figure": fig_dict,
     }
+    logger.info("Correlation funnel analysis completed.")
     return content, artifact
 
 
@@ -197,10 +213,11 @@ def generate_sweetviz_report(
     Description:
         Make an Exploratory Data Analysis (EDA) report using the Sweetviz library.
     """
-    print("    * Tool: generate_sweetviz_report")
+    logger.info(f"Executing tool: generate_sweetviz_report (target: {target})")
     try:
         import sweetviz as sv
     except ImportError:
+        logger.error("sweetviz library not found.")
         raise ImportError(
             "Please install 'sweetviz': pip install sweetviz"
         )
@@ -222,9 +239,11 @@ def generate_sweetviz_report(
 
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore", category=np.VisibleDeprecationWarning)
+        logger.debug("Running sweetviz analysis...")
         report = sv.analyze(df, target_feat=target)
 
     full_report_path = os.path.join(report_directory, report_name)
+    logger.info(f"Saving report to: {full_report_path}")
     report.show_html(filepath=full_report_path, open_browser=open_browser)
 
     html_content = None
@@ -232,7 +251,8 @@ def generate_sweetviz_report(
         try:
             with open(full_report_path, "r", encoding="utf-8") as f:
                 html_content = f.read()
-        except Exception:
+        except Exception as e:
+            logger.error(f"Failed to read generated HTML report: {e}")
             html_content = None
 
     content = f"Sweetviz report saved to {full_report_path}"
@@ -240,6 +260,7 @@ def generate_sweetviz_report(
         "report_file": full_report_path,
         "report_html": html_content
     }
+    logger.info("Sweetviz report generation completed.")
     return content, artifact
 
 
@@ -255,10 +276,11 @@ def generate_dtale_report(
     Description:
         Creates an interactive data exploration report using the dtale library.
     """
-    print("    * Tool: generate_dtale_report")
+    logger.info(f"Executing tool: generate_dtale_report (port: {port})")
     try:
         import dtale
     except ImportError:
+        logger.error("dtale library not found.")
         raise ImportError("Please install 'dtale': pip install dtale")
 
     df = pd.DataFrame(data_raw)
@@ -266,4 +288,5 @@ def generate_dtale_report(
 
     content = f"Dtale report running at {d.main_url()}"
     artifact = {"dtale_url": d.main_url()}
+    logger.info(f"Dtale report started at {d.main_url()}")
     return content, artifact

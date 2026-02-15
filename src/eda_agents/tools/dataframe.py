@@ -1,6 +1,7 @@
 import io
 import pandas as pd
 from typing import Union, List, Dict
+from eda_agents.utils.logger import logger
 
 def get_dataframe_summary(
     dataframes: Union[pd.DataFrame, List[pd.DataFrame], Dict[str, pd.DataFrame]],
@@ -10,6 +11,7 @@ def get_dataframe_summary(
     """
     Generate a summary for one or more DataFrames.
     """
+    logger.debug(f"Generating summary for {type(dataframes)} input.")
     summaries = []
 
     # --- Dictionary Case ---
@@ -34,6 +36,7 @@ def get_dataframe_summary(
             )
 
     else:
+        logger.error(f"Invalid input type to get_dataframe_summary: {type(dataframes)}")
         raise TypeError(
             "Input must be a single DataFrame, a list of DataFrames, or a dictionary of DataFrames."
         )
@@ -45,6 +48,7 @@ def _summarize_dataframe(
     df: pd.DataFrame, dataset_name: str, n_sample=30, skip_stats=False
 ) -> str:
     """Generate a summary string for a single DataFrame."""
+    logger.debug(f"Summarizing dataset: {dataset_name} (rows: {df.shape[0]})")
     # 1. Convert dictionary-type cells to strings
     df = df.apply(lambda col: col.map(lambda x: str(x) if isinstance(x, dict) else x))
 

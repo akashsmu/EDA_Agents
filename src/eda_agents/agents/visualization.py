@@ -5,76 +5,74 @@ from langchain_core.prompts import ChatPromptTemplate
 from langgraph.graph import StateGraph, END
 from eda_agents.agents.base import BaseAgent
 from eda_agents.utils.sandbox import run_code_sandboxed_subprocess
-from eda_agents.tools.dataframe import get_dataframe_summary
+from eda_agents.utils.logger import logger
 import json
 
 class AgentState(TypedDict):
-    messages: Annotated[list[BaseMessage], "messages"]
+    messages: list[BaseMessage]
     data_raw: dict
     code: str
     error: str
-    plotly_json: dict
     retry_count: int
+    plotly_json: dict
 
 class DataVisualizationAgent(BaseAgent):
-    def _make_compiled_graph(self):
-        workflow = StateGraph(AgentState)
+    def __init__(self, model):
+        super().__init__(model)
 
+    def create_graph(self):
+        workflow = StateGraph(AgentState)
+        
         workflow.add_node("generate_code", self.generate_code)
         workflow.add_node("execute_code", self.execute_code)
         workflow.add_node("fix_code", self.fix_code)
-
+        
         workflow.set_entry_point("generate_code")
-
+        
         workflow.add_edge("generate_code", "execute_code")
         
-        def check_execution(state):
-            if state.get("error"):
-                if state.get("retry_count", 0) < 3:
-                    return "fix_code"
-                else:
-                    return END
-            return END
-
         workflow.add_conditional_edges(
             "execute_code",
-            check_execution,
+            self.should_retry,
             {
-                "fix_code": "fix_code",
-                END: END
+                "retry": "fix_code",
+                "end": END
             }
         )
-
+        
         workflow.add_edge("fix_code", "execute_code")
-
-        return workflow.compile(checkpointer=self.checkpointer)
+        
+        return workflow.compile()
 
     def generate_code(self, state: AgentState):
-        df = pd.DataFrame(state["data_raw"])
-        summary = get_dataframe_summary(df)[0]
-        
+        logger.info("Generating visualization code...")
         prompt = ChatPromptTemplate.from_messages([
-            ("system", "You are a data visualization expert. Write Python code to visualize the data using Plotly Express. "
-                       "The code must define a function `visualize(df)` that returns a plotly figure. "
-                       "Do not use `fig.show()`. Just return the figure object. "
-                       "Ensure all imports are inside the function or at the top. "
-                       "Return ONLY the python code, no markdown backticks."),
-            ("user", "Data Summary:\n{summary}\n\nInstructions: {instructions}")
+            ("system", """You are an expert data visualizer using Python and Plotly.
+            Write a function `visualize(df: pd.DataFrame)` that returns a Plotly Figure.
+            The data will be provided as a pandas DataFrame.
+            Only return the code block, no explanations. 
+            Use `import plotly.express as px` or `import plotly.graph_objects as go`.
+            Ensure the function returns the figure object.
+            """),
+            ("user", "{instructions}")
         ])
         
-        messages = state["messages"]
-        instructions = messages[-1].content if messages else "Visualize the data"
-
-        chain = prompt | self.model
-        response = chain.invoke({"summary": summary, "instructions": instructions})
+        instructions = state["messages"][-1].content
+        logger.debug(f"Instructions: {instructions}")
         
-        code = response.content.replace("```python", "").replace("```", "").strip()
+        chain = prompt | self.model
+        response = chain.invoke({"instructions": instructions})
+        code = self._extract_code(response.content)
+        
+        logger.info(f"Summary of generated code: {len(code.splitlines())} lines.")
+        logger.debug(f"Generated Code block:\n{code}")
         
         return {"code": code, "retry_count": 0}
 
     def execute_code(self, state: AgentState):
         import tempfile
         code = state["code"]
+        logger.info("Executing visualization code in sandbox...")
 
         # Write data to a temp file instead of inlining via f-string
         tmp = tempfile.NamedTemporaryFile(
@@ -111,27 +109,51 @@ if __name__ == "__main__":
 
         if "[Stderr]:" in result:
             error = result.split("[Stderr]:")[1].strip()
+            logger.error(f"Execution error: {error}")
             return {"error": error}
 
         try:
+            logger.info("Parsing plotly figure result.")
             plotly_json = json.loads(result)
             return {"plotly_json": plotly_json, "error": None}
         except json.JSONDecodeError:
+            logger.error("Failed to parse plotly JSON output.")
             return {"error": f"Failed to parse output: {result}"}
 
     def fix_code(self, state: AgentState):
         error = state["error"]
         code = state["code"]
+        retry_count = state["retry_count"] + 1
+        
+        logger.warning(f"Repairing code. Retry count: {retry_count}. Error: {error}")
         
         prompt = ChatPromptTemplate.from_messages([
-            ("system", "You are an expert python debugger. Fix the following code based on the error message. "
-                       "Return ONLY the fixed code."),
-            ("user", "Code:\n{code}\n\nError:\n{error}")
+            ("system", "The following code failed with an error. Fix it.\n\nCode:\n{code}\n\nError:\n{error}"),
+            ("user", "Fix the code and return ONLY the corrected `visualize(df)` function.")
         ])
         
         chain = prompt | self.model
         response = chain.invoke({"code": code, "error": error})
+        new_code = self._extract_code(response.content)
         
-        fixed_code = response.content.replace("```python", "").replace("```", "").strip()
-        
-        return {"code": fixed_code, "retry_count": state.get("retry_count", 0) + 1}
+        logger.info("Generated revised code.")
+        return {"code": new_code, "retry_count": retry_count}
+
+    def should_retry(self, state: AgentState):
+        if state["error"] and state["retry_count"] < 3:
+            logger.info(f"Decision: Retrying execution (count {state['retry_count']})")
+            return "retry"
+        logger.info("Decision: Ending script generation loop.")
+        return "end"
+
+    def _extract_code(self, content: str) -> str:
+        if "```python" in content:
+            return content.split("```python")[1].split("```")[0].strip()
+        elif "```" in content:
+            return content.split("```")[1].split("```")[0].strip()
+        return content.strip()
+
+    def invoke(self, state: Dict[str, Any]):
+        logger.info(f"Visualizing data with {len(state['data_raw'])} records.")
+        graph = self.create_graph()
+        return graph.invoke(state)
