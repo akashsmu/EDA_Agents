@@ -207,28 +207,40 @@ elif navigation == "📊 Visualize Data":
     if st.session_state["data_raw"] is None:
         st.warning("Please upload data first.")
     else:
-        st.markdown("### 📊 Visualization Toolkit")
-        col1, col2 = st.columns(2)
+        st.markdown("### 📊 Automated Data Insights")
         
-        with col1:
-             with st.container(border=True):
-                 st.markdown("#### 📝 Data Summary")
-                 st.write("Generate a narrative overview of your columns and values.")
-                 if st.button("Run Explainer", use_container_width=True):
-                      logger.info("UI Button: Explainer clicked.")
-                      summary = explain_data.invoke({"data_raw": st.session_state["data_raw"]})
-                      st.info(summary)
+        # Tabs for different analysis views
+        tab1, tab2, tab3 = st.tabs(["📝 Narrative Summary", "📊 Table Statistics", "🔍 Missing Data Audit"])
+        
+        with tab1:
+            st.markdown("#### 📝 Narrative Overview")
+            with st.spinner("Generating narrative summary..."):
+                summary = explain_data.invoke({"data_raw": st.session_state["data_raw"]})
+                st.info(summary)
+                logger.info("Auto-run: explain_data completed.")
 
-        with col2:
-             with st.container(border=True):
-                 st.markdown("#### 🔍 Missing Data Audit")
-                 st.write("Analyze gaps and missing values using Missingno.")
-                 if st.button("Run Audit", use_container_width=True):
-                      logger.info("UI Button: Missing Data Audit clicked.")
-                      res, artifact = visualize_missing.invoke({"data_raw": st.session_state["data_raw"]})
-                      st.write(res)
-                      for name, plot in artifact.items():
-                          st.image(base64.b64decode(plot), caption=name.replace('_', ' ').title())
+        with tab2:
+            st.markdown("#### 📊 Descriptive Statistics")
+            from eda_agents.tools.eda import describe_dataset
+            with st.spinner("Calculating statistics..."):
+                res, artifact = describe_dataset.invoke({"data_raw": st.session_state["data_raw"]})
+                if "describe_df" in artifact:
+                    df_stats = pd.DataFrame(artifact["describe_df"])
+                    st.dataframe(df_stats, use_container_width=True)
+                else:
+                    st.write(res)
+                logger.info("Auto-run: describe_dataset completed.")
+
+        with tab3:
+            st.markdown("#### 🔍 Missing Value Analysis")
+            with st.spinner("Analyzing missing data..."):
+                res, artifact = visualize_missing.invoke({"data_raw": st.session_state["data_raw"]})
+                st.write(res)
+                
+                # Show plots in a grid or sequence
+                for name, plot_data in artifact.items():
+                    st.image(base64.b64decode(plot_data), caption=name.replace('_', ' ').title())
+                logger.info("Auto-run: visualize_missing completed.")
 
 # --- Wrangle Data ---
 elif navigation == "🧹 Wrangle Data":
