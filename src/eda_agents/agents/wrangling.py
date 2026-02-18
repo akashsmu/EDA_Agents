@@ -1,20 +1,24 @@
 from typing import Annotated, TypedDict, Union, Dict, Any
 import pandas as pd
-from langchain_core.messages import BaseMessage
+from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
 from langchain_core.prompts import ChatPromptTemplate
 from langgraph.graph import StateGraph, END
+from langgraph.checkpoint.memory import MemorySaver
 from eda_agents.agents.base import BaseAgent
 from eda_agents.utils.sandbox import run_code_sandboxed_subprocess
 from eda_agents.utils.logger import logger
+from eda_agents.tools.dataframe import get_dataframe_summary
 import json
 
 class AgentState(TypedDict):
     messages: list[BaseMessage]
     data_raw: dict
+    plan: str
     code: str
     error: str
     retry_count: int
     wrangled_data: list[dict]
+    hitl_enabled: bool
 
 class DataWranglingAgent(BaseAgent):
     def __init__(self, model):
@@ -23,11 +27,21 @@ class DataWranglingAgent(BaseAgent):
     def create_graph(self):
         workflow = StateGraph(AgentState)
         
+        workflow.add_node("recommend_steps", self.recommend_steps)
         workflow.add_node("generate_wrangling_code", self.generate_wrangling_code)
         workflow.add_node("execute_wrangling_code", self.execute_wrangling_code)
         workflow.add_node("fix_wrangling_code", self.fix_wrangling_code)
         
-        workflow.set_entry_point("generate_wrangling_code")
+        workflow.set_entry_point("recommend_steps")
+        
+        workflow.add_conditional_edges(
+            "recommend_steps",
+            self.should_generate,
+            {
+                "generate": "generate_wrangling_code",
+                "wait": END # This is where interrupt happens
+            }
+        )
         
         workflow.add_edge("generate_wrangling_code", "execute_wrangling_code")
         
@@ -42,30 +56,67 @@ class DataWranglingAgent(BaseAgent):
         
         workflow.add_edge("fix_wrangling_code", "execute_wrangling_code")
         
-        return workflow.compile()
+        return workflow.compile(
+            checkpointer=MemorySaver(),
+            interrupt_after=["recommend_steps"]
+        )
+
+    def recommend_steps(self, state: AgentState):
+        logger.info("Generating recommended steps for data wrangling...")
+        df = pd.DataFrame(state["data_raw"])
+        summary = get_dataframe_summary(df, n_sample=5)[0]
+        instructions = state["messages"][-1].content
+
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", """You are a data engineering architect using Pandas.
+            Analyze the data summary and the user's request.
+            Propose a concise step-by-step plan for the data transformation/cleaning.
+            Do not write code, just steps.
+            """),
+            ("user", "Data Summary:\n{summary}\n\nObjective: {instructions}")
+        ])
+        
+        chain = prompt | self.model
+        response = chain.invoke({"summary": summary, "instructions": instructions})
+        plan = response.content
+        
+        logger.info("Wrangling plan generated.")
+        return {"plan": plan}
+
+    def should_generate(self, state: AgentState):
+        if state.get("hitl_enabled", False):
+            # Check if the last message is an approval
+            last_msg = state["messages"][-1].content.lower()
+            if any(word in last_msg for word in ["approve", "proceed", "yes", "go"]):
+                logger.info("HITL: Plan approved. Proceeding to code generation.")
+                return "generate"
+            else:
+                logger.info("HITL: Waiting for user approval of the plan.")
+                return "wait"
+        
+        logger.info("HITL disabled or already approved. Proceeding to code generation.")
+        return "generate"
 
     def generate_wrangling_code(self, state: AgentState):
-        logger.info("Generating data wrangling code...")
+        logger.info("Generating data wrangling code based on plan...")
+        plan = state.get("plan", "Clean the data as requested.")
+        instructions = state["messages"][-1].content
+
         prompt = ChatPromptTemplate.from_messages([
             ("system", """You are an expert data engineer using Pandas.
-            Write a function `wrangle(df: pd.DataFrame)` that performs the requested data cleanup or transformation.
-            The data will be provided as a pandas DataFrame.
+            Follow the provided plan to write a function `wrangle(df: pd.DataFrame)` that performs the transformations.
             The function must return the modified DataFrame.
-            Only return the code block, no explanations.
+            Write ONLY the code block.
+            Plan: {plan}
             """),
             ("user", "{instructions}")
         ])
         
-        instructions = state["messages"][-1].content
-        logger.debug(f"Instructions: {instructions}")
-        
         chain = prompt | self.model
-        response = chain.invoke({"instructions": instructions})
+        response = chain.invoke({"plan": plan, "instructions": instructions})
         code = self._extract_code(response.content)
         
-        logger.info(f"Summary of generated code: {len(code.splitlines())} lines.")
-        logger.debug(f"Generated Code block:\n{code}")
-        
+        logger.info(f"Generated Wrangling Code block ({len(code.splitlines())} lines).")
         return {"code": code, "retry_count": 0}
 
     def execute_wrangling_code(self, state: AgentState):
@@ -73,7 +124,6 @@ class DataWranglingAgent(BaseAgent):
         code = state["code"]
         logger.info("Executing wrangling code in sandbox...")
 
-        # Write data to a temp file instead of inlining via f-string
         tmp = tempfile.NamedTemporaryFile(
             mode="w", suffix=".json", delete=False, prefix="eda_wrangle_"
         )
@@ -111,7 +161,6 @@ if __name__ == "__main__":
             return {"error": error}
 
         try:
-            logger.info("Parsing wrangled data result.")
             wrangled_data = json.loads(result)
             return {"wrangled_data": wrangled_data, "error": None}
         except json.JSONDecodeError:
@@ -123,7 +172,7 @@ if __name__ == "__main__":
         code = state["code"]
         retry_count = state["retry_count"] + 1
         
-        logger.warning(f"Repairing code. Retry count: {retry_count}. Error: {error}")
+        logger.warning(f"Repairing wrangling code (retry {retry_count}). Error: {error}")
         
         prompt = ChatPromptTemplate.from_messages([
             ("system", "The following code failed with an error. Fix it.\n\nCode:\n{code}\n\nError:\n{error}"),
@@ -134,14 +183,11 @@ if __name__ == "__main__":
         response = chain.invoke({"code": code, "error": error})
         new_code = self._extract_code(response.content)
         
-        logger.info("Generated revised code.")
         return {"code": new_code, "retry_count": retry_count}
 
     def should_retry(self, state: AgentState):
         if state["error"] and state["retry_count"] < 3:
-            logger.info(f"Decision: Retrying execution (count {state['retry_count']})")
             return "retry"
-        logger.info("Decision: Ending wrangling loop.")
         return "end"
 
     def _extract_code(self, content: str) -> str:
@@ -151,7 +197,7 @@ if __name__ == "__main__":
             return content.split("```")[1].split("```")[0].strip()
         return content.strip()
 
-    def invoke(self, state: Dict[str, Any]):
-        logger.info(f"Wrangling data with {len(state['data_raw'])} records.")
+    def invoke(self, state: Dict[str, Any], config: Dict[str, Any] = None):
+        logger.info(f"Wrangling data (HITL: {state.get('hitl_enabled', False)})")
         graph = self.create_graph()
-        return graph.invoke(state)
+        return graph.invoke(state, config=config)

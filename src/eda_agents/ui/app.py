@@ -94,6 +94,13 @@ with st.sidebar:
     st.markdown("---")
     openai_api_key = st.text_input("OpenAI API Key", type="password", help="Required for agents to work.")
     
+    st.markdown("---")
+    st.session_state["hitl_enabled"] = st.checkbox(
+        "🤝 Human-in-the-Loop", 
+        value=st.session_state.get("hitl_enabled", False),
+        help="When enabled, agents will pause and ask for approval after generating a plan."
+    )
+
     if st.button("🔄 Reset Session", use_container_width=True):
         logger.info("User requested session reset.")
         st.session_state["data_raw"] = None
@@ -155,22 +162,70 @@ elif navigation == "💬 AI Chat Analysis":
                 st.write(msg["content"])
                 if "image" in msg and msg["image"]:
                     st.plotly_chart(msg["image"])
+                if "plan" in msg and msg["plan"]:
+                    with st.expander("📝 Recommended Plan", expanded=True):
+                        st.markdown(msg["plan"])
 
         user_input = st.chat_input("Ask about your data (e.g., 'Show Age distribution', 'Drop columns X')")
         
+        # HITL Approval Button (shown only if graph is at a breakpoint)
+        if st.session_state.get("pending_approval"):
+            if st.button("✅ Approve & Proceed", use_container_width=True):
+                logger.info("User approved the plan.")
+                user_input = "Approve and proceed" # Simulate approval message
+                st.session_state["pending_approval"] = False
+
         if user_input:
             logger.info(f"User interaction: {user_input}")
             st.session_state["messages"].append({"role": "user", "content": user_input})
-            with st.chat_message("user"):
-                st.write(user_input)
+            # with st.chat_message("user"): # Removed to avoid double render after rerun
+            #     st.write(user_input)
 
             with st.spinner("🤖 Thinking..."):
+                # Prepare state
+                # If we are resuming, we need to provide the approval message
                 initial_state = {
                     "messages": [{"role": "user", "content": user_input}],
-                    "data_raw": st.session_state["data_raw"]
+                    "data_raw": st.session_state["data_raw"],
+                    "hitl_enabled": st.session_state.get("hitl_enabled", False)
                 }
+                
                 logger.info("Invoking graph...")
-                result = st.session_state["graph"].invoke(initial_state, config={"configurable": {"thread_id": "1"}})
+                # Use the same thread_id for persistence
+                config = {"configurable": {"thread_id": "1"}}
+                
+                # Check if we have a state to resume from
+                snapshot = st.session_state["graph"].get_state(config)
+                
+                if snapshot.next:
+                    logger.info(f"Resuming graph from breakpoint: {snapshot.next}")
+                    # If resuming, we pass None as input to just continue with the new message in history
+                    result = st.session_state["graph"].invoke(None, config=config)
+                else:
+                    result = st.session_state["graph"].invoke(initial_state, config=config)
+                
+                # Check if we hit an interrupt
+                new_snapshot = st.session_state["graph"].get_state(config)
+                
+                if new_snapshot.next:
+                    logger.info("Graph interrupted for approval.")
+                    # The state should contain the plan
+                    plan = new_snapshot.values.get("router_decision", {}).get("final_output", {}).get("plan") 
+                    # Note: because we nested agents, the plan is inside final_output of the main graph node
+                    
+                    # Actually, the sub-agent state is what has the plan. 
+                    # Let's check where the plan is stored in the result.
+                    # result is what comes out of the node.
+                    
+                    plan = result.get("final_output", {}).get("plan")
+                    
+                    st.session_state["messages"].append({
+                        "role": "assistant", 
+                        "content": "I've analyzed your request and prepared a plan. Please review it below:",
+                        "plan": plan
+                    })
+                    st.session_state["pending_approval"] = True
+                    st.rerun()
                 
                 final_output = result.get("final_output", {})
                 
@@ -194,13 +249,7 @@ elif navigation == "💬 AI Chat Analysis":
                     response_content = f"❌ Error: {final_output['error']}"
 
                 st.session_state["messages"].append({"role": "assistant", "content": response_content, "image": response_image})
-                with st.chat_message("assistant"):
-                    st.write(response_content)
-                    if response_image:
-                        st.plotly_chart(response_image)
-                    if "code" in final_output:
-                         with st.expander("Show Python Code"):
-                             st.code(final_output["code"])
+                st.rerun() # Refresh to show new messages
 
 # --- Visualize Data ---
 elif navigation == "📊 Visualize Data":
