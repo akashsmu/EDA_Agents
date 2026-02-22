@@ -329,3 +329,73 @@ elif navigation == "📋 Deep Reports":
                       st.success("Report Ready!")
                       st.components.v1.html(artifact["report_html"], height=800, scrolling=True)
 
+        st.markdown("---")
+        with st.container(border=True):
+            st.markdown("#### 🤖 Custom AI Report")
+            st.write("Generate a custom report with specific wrangling, plots, and an AI-generated summary.")
+            
+            wrangle_options = st.multiselect(
+                "Select Wrangling Methods:",
+                ["Drop Duplicates", "Drop Missing Values", "Fill Missing Values (Forward Fill)", "Fill Missing Values (Backward Fill)"]
+            )
+            
+            analysis_options = st.multiselect(
+                "Select Analysis & Plots to Include:",
+                ["Data Summary", "Descriptive Statistics", "Missing Values Plot", "Correlation Funnel"],
+                default=["Data Summary"]
+            )
+            
+            target_col = None
+            if "Correlation Funnel" in analysis_options:
+                df_cols = pd.DataFrame(st.session_state["data_raw"]).columns.tolist()
+                target_col = st.selectbox("Select Target Column for Correlation Funnel:", df_cols)
+                
+            report_instructions = st.text_area("Additional Instructions (e.g. 'Focus on outliers in Age'):")
+            
+            if st.button("Generate Custom Report", use_container_width=True):
+                if not openai_api_key and "OPENAI_API_KEY" not in os.environ:
+                    st.error("Please provide an OpenAI API Key in the sidebar to generate AI summaries.")
+                else:
+                    logger.info("UI Button: Custom AI Report clicked.")
+                    from eda_agents.tools.report import generate_custom_report
+                    with st.spinner("Generating custom report (this may take a minute)..."):
+                        llm = ChatOpenAI(model="gpt-4", api_key=openai_api_key or os.environ["OPENAI_API_KEY"])
+                        result = generate_custom_report(
+                            data_raw=st.session_state["data_raw"],
+                            wrangling_methods=wrangle_options,
+                            analysis_methods=analysis_options,
+                            target_col=target_col,
+                            instructions=report_instructions,
+                            llm=llm
+                        )
+                    
+                    st.success("Custom Report Generated!")
+                    st.session_state["data_raw"] = result["cleaned_data"]
+                    if wrangle_options:
+                        st.info("Dataset has been updated in memory based on the selected wrangling methods.")
+                    
+                    st.markdown("### 📝 Executive Text Summary")
+                    st.markdown(result["summary_markdown"])
+                    
+                    # Display Artifacts if any exist
+                    arts = result.get("artifacts", {})
+                    
+                    if "descriptive_statistics" in arts:
+                        st.markdown("#### Descriptive Statistics")
+                        st.dataframe(pd.DataFrame(arts["descriptive_statistics"]["describe_df"]))
+                        
+                    if "missing_plots" in arts:
+                        st.markdown("#### Missing Values Plots")
+                        plots = arts["missing_plots"]
+                        if "matrix_plot" in plots:
+                            st.image(base64.b64decode(plots["matrix_plot"]), caption="Missingity Matrix")
+                        if "bar_plot" in plots:
+                            st.image(base64.b64decode(plots["bar_plot"]), caption="Missing Values Bar Plot")
+                            
+                    if "correlation_funnel" in arts:
+                        st.markdown("#### Correlation Funnel")
+                        funnel = arts["correlation_funnel"]
+                        if funnel.get("plot_image"):
+                            st.image(base64.b64decode(funnel["plot_image"]), caption="Correlation Funnel Plot")
+
+
