@@ -140,116 +140,118 @@ if navigation == "🏠 Home":
         st.dataframe(df_preview.head(10), use_container_width=True)
         st.info(f"Shape: {df_preview.shape[0]} rows, {df_preview.shape[1]} columns")
 
+def render_chat_interface(openai_api_key):
+    # Initialize Graph
+    if st.session_state["graph"] is None:
+        if not openai_api_key and "OPENAI_API_KEY" not in os.environ:
+            st.error("Please provide an OpenAI API Key in the sidebar.")
+            st.stop()
+        logger.info("Initializing LangGraph for Chat.")
+        llm = ChatOpenAI(model="gpt-4", api_key=openai_api_key or os.environ["OPENAI_API_KEY"])
+        st.session_state["graph"] = create_eda_graph(llm)
+
+    # Display history
+    for msg in st.session_state["messages"]:
+        with st.chat_message(msg["role"]):
+            st.write(msg["content"])
+            if "image" in msg and msg["image"]:
+                st.plotly_chart(msg["image"])
+            if "plan" in msg and msg["plan"]:
+                with st.expander("📝 Recommended Plan", expanded=True):
+                    st.markdown(msg["plan"])
+
+    user_input = st.chat_input("Ask about your data (e.g., 'Show Age distribution', 'Drop columns X')")
+    
+    # HITL Approval Button (shown only if graph is at a breakpoint)
+    if st.session_state.get("pending_approval"):
+        if st.button("✅ Approve & Proceed", use_container_width=True):
+            logger.info("User approved the plan.")
+            user_input = "Approve and proceed" # Simulate approval message
+            st.session_state["pending_approval"] = False
+
+    if user_input:
+        logger.info(f"User interaction: {user_input}")
+        st.session_state["messages"].append({"role": "user", "content": user_input})
+        # with st.chat_message("user"): # Removed to avoid double render after rerun
+        #     st.write(user_input)
+
+        with st.spinner("🤖 Thinking..."):
+            # Prepare state
+            # If we are resuming, we need to provide the approval message
+            initial_state = {
+                "messages": [{"role": "user", "content": user_input}],
+                "data_raw": st.session_state["data_raw"],
+                "hitl_enabled": st.session_state.get("hitl_enabled", False)
+            }
+            
+            logger.info("Invoking graph...")
+            # Use the same thread_id for persistence
+            config = {"configurable": {"thread_id": "1"}}
+            
+            # Check if we have a state to resume from
+            snapshot = st.session_state["graph"].get_state(config)
+            
+            if snapshot.next:
+                logger.info(f"Resuming graph from breakpoint: {snapshot.next}")
+                # If resuming, we pass None as input to just continue with the new message in history
+                result = st.session_state["graph"].invoke(None, config=config)
+            else:
+                result = st.session_state["graph"].invoke(initial_state, config=config)
+            
+            # Check if we hit an interrupt
+            new_snapshot = st.session_state["graph"].get_state(config)
+            
+            if new_snapshot.next:
+                logger.info("Graph interrupted for approval.")
+                # The state should contain the plan
+                plan = new_snapshot.values.get("router_decision", {}).get("final_output", {}).get("plan") 
+                # Note: because we nested agents, the plan is inside final_output of the main graph node
+                
+                # Actually, the sub-agent state is what has the plan. 
+                # Let's check where the plan is stored in the result.
+                # result is what comes out of the node.
+                
+                plan = result.get("final_output", {}).get("plan")
+                
+                st.session_state["messages"].append({
+                    "role": "assistant", 
+                    "content": "I've analyzed your request and prepared a plan. Please review it below:",
+                    "plan": plan
+                })
+                st.session_state["pending_approval"] = True
+                st.rerun()
+            
+            final_output = result.get("final_output", {})
+            
+            if "wrangled_data" in final_output:
+                logger.info("Data wrangling update detected in graph output.")
+                st.session_state["data_raw"] = final_output["wrangled_data"]
+                st.toast("✅ Data updated!")
+            
+            response_content = "Task completed."
+            response_image = None
+            
+            if "plotly_json" in final_output:
+                logger.info("Visualization result received.")
+                response_image = final_output["plotly_json"]
+                response_content = "Here is the visualization:"
+            elif "wrangled_data" in final_output:
+                response_content = "I have updated the data as requested."
+            
+            if "error" in final_output and final_output["error"]:
+                logger.error(f"Graph execution returned error: {final_output['error']}")
+                response_content = f"❌ Error: {final_output['error']}"
+
+            st.session_state["messages"].append({"role": "assistant", "content": response_content, "image": response_image})
+            st.rerun() # Refresh to show new messages
+
 # --- AI Chat Analysis ---
 elif navigation == "💬 AI Chat Analysis":
     if st.session_state["data_raw"] is None:
         st.warning("Please upload data first on the Home page.")
     else:
         st.markdown("### 💬 AI Data Assistant")
-        
-        # Initialize Graph
-        if st.session_state["graph"] is None:
-            if not openai_api_key and "OPENAI_API_KEY" not in os.environ:
-                st.error("Please provide an OpenAI API Key in the sidebar.")
-                st.stop()
-            logger.info("Initializing LangGraph for Chat.")
-            llm = ChatOpenAI(model="gpt-4", api_key=openai_api_key or os.environ["OPENAI_API_KEY"])
-            st.session_state["graph"] = create_eda_graph(llm)
-
-        # Display history
-        for msg in st.session_state["messages"]:
-            with st.chat_message(msg["role"]):
-                st.write(msg["content"])
-                if "image" in msg and msg["image"]:
-                    st.plotly_chart(msg["image"])
-                if "plan" in msg and msg["plan"]:
-                    with st.expander("📝 Recommended Plan", expanded=True):
-                        st.markdown(msg["plan"])
-
-        user_input = st.chat_input("Ask about your data (e.g., 'Show Age distribution', 'Drop columns X')")
-        
-        # HITL Approval Button (shown only if graph is at a breakpoint)
-        if st.session_state.get("pending_approval"):
-            if st.button("✅ Approve & Proceed", use_container_width=True):
-                logger.info("User approved the plan.")
-                user_input = "Approve and proceed" # Simulate approval message
-                st.session_state["pending_approval"] = False
-
-        if user_input:
-            logger.info(f"User interaction: {user_input}")
-            st.session_state["messages"].append({"role": "user", "content": user_input})
-            # with st.chat_message("user"): # Removed to avoid double render after rerun
-            #     st.write(user_input)
-
-            with st.spinner("🤖 Thinking..."):
-                # Prepare state
-                # If we are resuming, we need to provide the approval message
-                initial_state = {
-                    "messages": [{"role": "user", "content": user_input}],
-                    "data_raw": st.session_state["data_raw"],
-                    "hitl_enabled": st.session_state.get("hitl_enabled", False)
-                }
-                
-                logger.info("Invoking graph...")
-                # Use the same thread_id for persistence
-                config = {"configurable": {"thread_id": "1"}}
-                
-                # Check if we have a state to resume from
-                snapshot = st.session_state["graph"].get_state(config)
-                
-                if snapshot.next:
-                    logger.info(f"Resuming graph from breakpoint: {snapshot.next}")
-                    # If resuming, we pass None as input to just continue with the new message in history
-                    result = st.session_state["graph"].invoke(None, config=config)
-                else:
-                    result = st.session_state["graph"].invoke(initial_state, config=config)
-                
-                # Check if we hit an interrupt
-                new_snapshot = st.session_state["graph"].get_state(config)
-                
-                if new_snapshot.next:
-                    logger.info("Graph interrupted for approval.")
-                    # The state should contain the plan
-                    plan = new_snapshot.values.get("router_decision", {}).get("final_output", {}).get("plan") 
-                    # Note: because we nested agents, the plan is inside final_output of the main graph node
-                    
-                    # Actually, the sub-agent state is what has the plan. 
-                    # Let's check where the plan is stored in the result.
-                    # result is what comes out of the node.
-                    
-                    plan = result.get("final_output", {}).get("plan")
-                    
-                    st.session_state["messages"].append({
-                        "role": "assistant", 
-                        "content": "I've analyzed your request and prepared a plan. Please review it below:",
-                        "plan": plan
-                    })
-                    st.session_state["pending_approval"] = True
-                    st.rerun()
-                
-                final_output = result.get("final_output", {})
-                
-                if "wrangled_data" in final_output:
-                    logger.info("Data wrangling update detected in graph output.")
-                    st.session_state["data_raw"] = final_output["wrangled_data"]
-                    st.toast("✅ Data updated!")
-                
-                response_content = "Task completed."
-                response_image = None
-                
-                if "plotly_json" in final_output:
-                    logger.info("Visualization result received.")
-                    response_image = final_output["plotly_json"]
-                    response_content = "Here is the visualization:"
-                elif "wrangled_data" in final_output:
-                    response_content = "I have updated the data as requested."
-                
-                if "error" in final_output and final_output["error"]:
-                    logger.error(f"Graph execution returned error: {final_output['error']}")
-                    response_content = f"❌ Error: {final_output['error']}"
-
-                st.session_state["messages"].append({"role": "assistant", "content": response_content, "image": response_image})
-                st.rerun() # Refresh to show new messages
+        render_chat_interface(openai_api_key)
 
 # --- Visualize Data ---
 elif navigation == "📊 Visualize Data":
@@ -297,20 +299,27 @@ elif navigation == "🧹 Wrangle Data":
         st.warning("Please upload data first.")
     else:
         st.markdown("### 🧹 Data Wrangling")
-        st.info("Direct wrangling tools are being integrated. For now, use the **AI Chat Analysis** to clean data using natural language.")
+        st.write("Perform common data cleaning operations or ask the AI to do it for you.")
         
-        st.markdown("#### Suggested Actions:")
-        col1, col2 = st.columns(2)
+        col1, col2, col3 = st.columns(3)
         with col1:
-             if st.button("Remove Duplicate Rows", use_container_width=True):
-                  logger.info("UI Button: Remove Duplicates suggested.")
-                  st.session_state["messages"].append({"role": "user", "content": "Remove duplicate rows"})
-                  st.info("Action sent to AI Chat. Switch to Chat tab to see results.")
+            if st.button("Remove Duplicate Rows", use_container_width=True):
+                logger.info("UI Button: Remove Duplicates clicked.")
+                st.session_state["messages"].append({"role": "user", "content": "Remove duplicate rows"})
+                st.rerun()
         with col2:
-             if st.button("Handle Missing Values (Fillna)", use_container_width=True):
-                  logger.info("UI Button: Handle Missing Values suggested.")
-                  st.session_state["messages"].append({"role": "user", "content": "Fill missing values with mean for numeric and mode for categorical"})
-                  st.info("Action sent to AI Chat.")
+            if st.button("Drop Missing Values", use_container_width=True):
+                logger.info("UI Button: Drop Missing Values clicked.")
+                st.session_state["messages"].append({"role": "user", "content": "Drop all rows with missing values"})
+                st.rerun()
+        with col3:
+            if st.button("Fill Missing (Mean/Mode)", use_container_width=True):
+                logger.info("UI Button: Fill Missing Values clicked.")
+                st.session_state["messages"].append({"role": "user", "content": "Fill missing values with mean for numeric columns and mode for categorical columns"})
+                st.rerun()
+        
+        st.markdown("---")
+        render_chat_interface(openai_api_key)
 
 # --- Deep Reports ---
 elif navigation == "📋 Deep Reports":
