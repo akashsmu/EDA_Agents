@@ -147,7 +147,7 @@ def render_chat_interface(openai_api_key):
             st.error("Please provide an OpenAI API Key in the sidebar.")
             st.stop()
         logger.info("Initializing LangGraph for Chat.")
-        llm = ChatOpenAI(model="gpt-4", api_key=openai_api_key or os.environ["OPENAI_API_KEY"])
+        llm = ChatOpenAI(model="gpt-4o-mini", api_key=openai_api_key or os.environ["OPENAI_API_KEY"])
         st.session_state["graph"] = create_eda_graph(llm)
 
     # Display history
