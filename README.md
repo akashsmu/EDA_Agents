@@ -5,13 +5,16 @@ An intelligent, agentic framework for Exploratory Data Analysis (EDA) powered by
 ## 🚀 Features
 
 - **Multi-Agent Architecture**:
-    - **Visualization Agent**: Generates Plotly charts based on your natural language queries.
-    - **Wrangling Agent**: Cleans and transforms data using Pandas.
+    - **Visualization Agent**: Generates Plotly charts based on natural language queries, featuring **advanced column profiling**, **automated alias resolution**, and **robust fallback chart generation**.
+    - **Wrangling Agent**: Cleans and transforms data using Pandas, equipped with enhanced methods for **data manipulation, in-depth analysis**, and **conversational chat functionality**.
     - **Orchestrator**: Routes user requests to the appropriate specialist agent.
 - **Advanced EDA Tools**:
+    - **Custom Report Generation**: Autonomously generate extensive EDA reports combining intelligent text summaries and visualizations.
     - **Sweetviz**: Comprehensive automated EDA reports.
     - **Missingno**: Visual analysis of missing data.
-- **Sandboxed Execution**: Generated code is executed in a secure subprocess.
+- **Robustness & Security**:
+    - **Comprehensive Testing**: Full test suite powered by `pytest` ensuring stable agent behavior and prompt regression prevention.
+    - **Sandboxed Execution**: Generated code is executed in a secure subprocess.
 - **Interactive UI**: User-friendly Streamlit interface for chat, tools, and reports.
 
 ## 🛠️ Installation
@@ -29,7 +32,7 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### Set Up Environment Variables
+### Ensure Setup in Environment
 
 Create a `.env` file in the project root:
 
@@ -37,33 +40,21 @@ Create a `.env` file in the project root:
 echo "OPENAI_API_KEY=sk-your-key-here" > .env
 ```
 
-### Alternative: Poetry
-
-> [!WARNING]
-> Poetry may fail to build certain C/Rust dependencies (scipy, tiktoken) if your system Python
-> or Poetry's internal Python doesn't have prebuilt wheels available.
-> If you hit build errors, use the pip approach above.
-
-```bash
-brew install pipx && pipx install poetry    # install Poetry
-pipx ensurepath && source ~/.zshrc          # add to PATH
-poetry config virtualenvs.in-project true   # create .venv in project
-poetry install                              # install dependencies
-```
-
 ## 🏃 Usage
 
-### With pip (venv)
+### Running the App
 
 ```bash
 source .venv/bin/activate
 streamlit run src/eda_agents/ui/app.py
 ```
 
-### With Poetry
+### Running Tests
+
+We use `pytest` for ensuring application stability and agent reliability.
 
 ```bash
-poetry run streamlit run src/eda_agents/ui/app.py
+pytest tests/
 ```
 
 ### Workflow
@@ -79,6 +70,3 @@ poetry run streamlit run src/eda_agents/ui/app.py
 - `src/eda_agents/utils/`: Utility functions for sandboxed execution and plotting.
 - `src/eda_agents/ui/`: Streamlit application code.
 
-## 🤝 Contributing
-
-Contributions are welcome! Please submit a Pull Request.
