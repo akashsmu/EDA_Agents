@@ -13,6 +13,7 @@ from eda_agents.utils.profiling import (
     _build_fallback_chart,
     build_prompt_context,
 )
+from eda_agents.templates.agent_templates import create_coding_agent_graph
 import json
 
 class AgentState(TypedDict):
@@ -32,41 +33,17 @@ class DataVisualizationAgent(BaseAgent):
         super().__init__(model)
 
     def create_graph(self):
-        workflow = StateGraph(AgentState)
-        
-        workflow.add_node("recommend_steps", self.recommend_steps)
-        workflow.add_node("generate_code", self.generate_code)
-        workflow.add_node("execute_code", self.execute_code)
-        workflow.add_node("fix_code", self.fix_code)
-        
-        workflow.set_entry_point("recommend_steps")
-        
-        workflow.add_conditional_edges(
-            "recommend_steps",
-            self.should_generate,
-            {
-                "generate": "generate_code",
-                "wait": END # This is where interrupt happens
-            }
-        )
-        
-        workflow.add_edge("generate_code", "execute_code")
-        
-        workflow.add_conditional_edges(
-            "execute_code",
-            self.should_retry,
-            {
-                "retry": "fix_code",
-                "end": END
-            }
-        )
-        
-        workflow.add_edge("fix_code", "execute_code")
-        
-        # Compile with checkpointer and optional interrupt
-        return workflow.compile(
-            checkpointer=MemorySaver(),
-            interrupt_after=["recommend_steps"]
+        return create_coding_agent_graph(
+            state_schema=AgentState,
+            recommend_steps_node=self.recommend_steps,
+            generate_code_node=self.generate_code,
+            execute_code_node=self.execute_code,
+            fix_code_node=self.fix_code,
+            should_generate_edge=self.should_generate,
+            should_retry_edge=self.should_retry,
+            generate_node_name="generate_code",
+            execute_node_name="execute_code",
+            fix_node_name="fix_code"
         )
 
     def recommend_steps(self, state: AgentState):
