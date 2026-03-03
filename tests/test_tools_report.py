@@ -16,8 +16,9 @@ def mock_llm():
     llm = MagicMock()
     # Mock the invoke chain for ChatPromptTemplate | llm
     mock_response = MagicMock()
-    mock_response.content = "Mocked Executive Summary."
+    # To support both llm.invoke() and llm() Runnable coercion
     llm.invoke.return_value = mock_response
+    llm.return_value = mock_response
     return llm
 
 @patch("eda_agents.tools.report.explain_data.invoke")

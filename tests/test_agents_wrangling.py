@@ -10,6 +10,7 @@ def mock_model():
     mock_resp = MagicMock()
     mock_resp.content = "Mocked response"
     model.invoke.return_value = mock_resp
+    model.return_value = mock_resp
     return model
 
 @pytest.fixture
@@ -63,12 +64,12 @@ def test_should_retry(agent, base_state):
     assert agent.should_retry(base_state) == "end"
 
 def test_recommend_steps(agent, base_state):
-    agent.model.invoke.return_value.content = "1. Drop NAs\n2. Fill zeros"
+    agent.model.return_value.content = "1. Drop NAs\n2. Fill zeros"
     new_state = agent.recommend_steps(base_state)
     assert new_state["plan"] == "1. Drop NAs\n2. Fill zeros"
 
 def test_generate_wrangling_code(agent, base_state):
-    agent.model.invoke.return_value.content = "```python\ndef wrangle(df):\n    return df.dropna()\n```"
+    agent.model.return_value.content = "```python\ndef wrangle(df):\n    return df.dropna()\n```"
     new_state = agent.generate_wrangling_code(base_state)
     assert "def wrangle(df):" in new_state["code"]
     assert new_state["retry_count"] == 0
@@ -83,9 +84,9 @@ def test_execute_wrangling_code_success(agent, base_state):
     assert new_state["wrangled_data"][1]["A"] == 0.0
 
 def test_execute_wrangling_code_failure(agent, base_state):
-    base_state["code"] = "def wrangle(df):\n    return df / 0" # ZeroDivisionError
+    base_state["code"] = "def wrangle(df):\n    raise ValueError('Test error')"
     new_state = agent.execute_wrangling_code(base_state)
     
     assert new_state["error"] is not None
-    assert "ZeroDivisionError" in new_state["error"]
+    assert "Test error" in new_state["error"]
     assert "wrangled_data" not in new_state

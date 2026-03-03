@@ -32,7 +32,7 @@ class DataVisualizationAgent(BaseAgent):
     def __init__(self, model):
         super().__init__(model)
 
-    def create_graph(self):
+    def _make_compiled_graph(self):
         return create_coding_agent_graph(
             state_schema=AgentState,
             recommend_steps_node=self.recommend_steps,
@@ -230,5 +230,4 @@ if __name__ == "__main__":
 
     def invoke(self, state: Dict[str, Any], config: Dict[str, Any] = None):
         logger.info(f"Visualizing data (HITL: {state.get('hitl_enabled', False)})")
-        graph = self.create_graph()
-        return graph.invoke(state, config=config)
+        return super().invoke(state, config=config)
