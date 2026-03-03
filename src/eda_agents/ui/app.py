@@ -112,34 +112,6 @@ with st.sidebar:
     st.caption("v1.1.0 | Project Foundation")
 
 
-# --- Home / Landing Page ---
-if navigation == "🏠 Home":
-    st.markdown("<div class='main-header'>🔎 EDA Agents</div>", unsafe_allow_html=True)
-    st.markdown("<div class='sub-header'>Your Autonomous Data Analysis Partner</div>", unsafe_allow_html=True)
-
-    if st.session_state["data_raw"] is None:
-        col1, col2, col3 = st.columns(3)
-        with col1:
-             st.markdown("<div class='card'><div class='card-title'>📊 Visualize</div><div class='card-text'>Instant Plotly charts from natural language.</div></div>", unsafe_allow_html=True)
-        with col2:
-             st.markdown("<div class='card'><div class='card-title'>🧹 Wrangle</div><div class='card-text'>Clean, filter, and transform data automatically.</div></div>", unsafe_allow_html=True)
-        with col3:
-             st.markdown("<div class='card'><div class='card-title'>📋 Reports</div><div class='card-text'>Comprehensive Sweetviz and Missingno audits.</div></div>", unsafe_allow_html=True)
-        
-        st.markdown("---")
-        uploaded_file = st.file_uploader("📂 Upload a CSV to begin", type=["csv"])
-        if uploaded_file:
-            logger.info(f"File uploaded: {uploaded_file.name}")
-            df = pd.read_csv(uploaded_file)
-            st.session_state["data_raw"] = df.to_dict(orient="records")
-            logger.info(f"Loaded {len(df)} rows into session state.")
-            st.rerun()
-    else:
-        st.success("✅ Data Loaded! Use the sidebar to start analyzing.")
-        df_preview = pd.DataFrame(st.session_state["data_raw"])
-        st.dataframe(df_preview.head(10), use_container_width=True)
-        st.info(f"Shape: {df_preview.shape[0]} rows, {df_preview.shape[1]} columns")
-
 def render_chat_interface(openai_api_key):
     # Initialize Graph
     if st.session_state["graph"] is None:
@@ -244,6 +216,34 @@ def render_chat_interface(openai_api_key):
 
             st.session_state["messages"].append({"role": "assistant", "content": response_content, "image": response_image})
             st.rerun() # Refresh to show new messages
+
+# --- Home / Landing Page ---
+if navigation == "🏠 Home":
+    st.markdown("<div class='main-header'>🔎 EDA Agents</div>", unsafe_allow_html=True)
+    st.markdown("<div class='sub-header'>Your Autonomous Data Analysis Partner</div>", unsafe_allow_html=True)
+
+    if st.session_state["data_raw"] is None:
+        col1, col2, col3 = st.columns(3)
+        with col1:
+             st.markdown("<div class='card'><div class='card-title'>📊 Visualize</div><div class='card-text'>Instant Plotly charts from natural language.</div></div>", unsafe_allow_html=True)
+        with col2:
+             st.markdown("<div class='card'><div class='card-title'>🧹 Wrangle</div><div class='card-text'>Clean, filter, and transform data automatically.</div></div>", unsafe_allow_html=True)
+        with col3:
+             st.markdown("<div class='card'><div class='card-title'>📋 Reports</div><div class='card-text'>Comprehensive Sweetviz and Missingno audits.</div></div>", unsafe_allow_html=True)
+        
+        st.markdown("---")
+        uploaded_file = st.file_uploader("📂 Upload a CSV to begin", type=["csv"])
+        if uploaded_file:
+            logger.info(f"File uploaded: {uploaded_file.name}")
+            df = pd.read_csv(uploaded_file)
+            st.session_state["data_raw"] = df.to_dict(orient="records")
+            logger.info(f"Loaded {len(df)} rows into session state.")
+            st.rerun()
+    else:
+        st.success("✅ Data Loaded! Use the sidebar to start analyzing.")
+        df_preview = pd.DataFrame(st.session_state["data_raw"])
+        st.dataframe(df_preview.head(10), use_container_width=True)
+        st.info(f"Shape: {df_preview.shape[0]} rows, {df_preview.shape[1]} columns")
 
 # --- AI Chat Analysis ---
 elif navigation == "💬 AI Chat Analysis":
