@@ -8,6 +8,7 @@ from langgraph.checkpoint.memory import MemorySaver
 
 from eda_agents.agents.visualization import DataVisualizationAgent
 from eda_agents.agents.wrangling import DataWranglingAgent
+from eda_agents.agents.cleaning import DataCleaningAgent
 from eda_agents.utils.logger import logger
 
 
@@ -55,7 +56,8 @@ def router_node(state: MultiAgentState):
         ("system", """You are an expert intent classifier for a data analysis system.
         Route the user's request to one of the following agents:
         - 'visualization_node': For requests to plot, graph, chart, or visualize data.
-        - 'wrangling_node': For requests to clean, transform, modify, fill missing values, drop columns, or filter data.
+        - 'wrangling_node': For requests to transform, modify structure, combine, sort, or filter data.
+        - 'cleaning_node': For requests to clean data, handle missing values, handle outliers, or fix data types.
 
         Also, refine the user's instructions to be precise for the target agent.
         If the request is ambiguous, default to 'visualization_node'.
@@ -120,6 +122,22 @@ def wrangling_node(state: MultiAgentState):
     logger.info("Wrangling Agent task complete.")
     return {"final_output": result}
 
+def cleaning_node(state: MultiAgentState):
+    logger.info("Invoking cleaning_node...")
+    model = ChatOpenAI(model="gpt-4")
+    agent = DataCleaningAgent(model)
+    
+    refined_instructions = state["router_decision"].get("refined_instructions", "")
+    
+    agent_state = {
+        "messages": [HumanMessage(content=refined_instructions)],
+        "data_raw": state["data_raw"]
+    }
+    
+    result = agent.invoke(agent_state)
+    logger.info("Cleaning Agent task complete.")
+    return {"final_output": result}
+
 def create_eda_graph(model: ChatOpenAI):
     logger.info("Initializing EDA Graph.")
     workflow = StateGraph(MultiAgentState)
@@ -127,6 +145,7 @@ def create_eda_graph(model: ChatOpenAI):
     workflow.add_node("router_node", router_node)
     workflow.add_node("visualization_node", visualization_node)
     workflow.add_node("wrangling_node", wrangling_node)
+    workflow.add_node("cleaning_node", cleaning_node)
     
     workflow.set_entry_point("router_node")
     
@@ -135,12 +154,14 @@ def create_eda_graph(model: ChatOpenAI):
         router_condition,
         {
             "visualization_node": "visualization_node",
-            "wrangling_node": "wrangling_node"
+            "wrangling_node": "wrangling_node",
+            "cleaning_node": "cleaning_node"
         }
     )
     
     workflow.add_edge("visualization_node", END)
     workflow.add_edge("wrangling_node", END)
+    workflow.add_edge("cleaning_node", END)
     
     memory = MemorySaver()
     logger.info("Graph compiled successfully.")
