@@ -21,14 +21,17 @@ def mock_llm():
     llm.return_value = mock_response
     return llm
 
-@patch("eda_agents.tools.report.explain_data.invoke")
-@patch("eda_agents.tools.report.describe_dataset.invoke")
-@patch("eda_agents.tools.report.visualize_missing.invoke")
+@patch("eda_agents.tools.report.explain_data")
+@patch("eda_agents.tools.report.describe_dataset")
+@patch("eda_agents.tools.report.visualize_missing")
 def test_generate_custom_report(mock_vis, mock_desc, mock_exp, sample_data, mock_llm):
     # Setup mocks
-    mock_exp.return_value = "Mocked Explain Data"
-    mock_desc.return_value = ("Mocked Describe Data", {"describe_df": pd.DataFrame()})
-    mock_vis.return_value = ("Mocked Missing Visuals", {"missing_plots": {}})
+    mock_exp.invoke.return_value = "Mocked Explain Data"
+    mock_desc.invoke.return_value = ("Mocked Describe Data", {"describe_df": pd.DataFrame()})
+    mock_vis.invoke.return_value = ("Mocked Missing Visuals", {"missing_plots": {}})
+    
+    # Mock the LLM response content
+    mock_llm.invoke.return_value.content = "Mocked Executive Summary."
 
     result = generate_custom_report(
         data_raw=sample_data,
@@ -44,9 +47,9 @@ def test_generate_custom_report(mock_vis, mock_desc, mock_exp, sample_data, mock
     assert len(result["cleaned_data"]) == 2  # One row with None dropped
 
     # Validate Analysis Tools Called
-    mock_exp.assert_called_once()
-    mock_desc.assert_called_once()
-    mock_vis.assert_called_once()
+    mock_exp.invoke.assert_called_once()
+    mock_desc.invoke.assert_called_once()
+    mock_vis.invoke.assert_called_once()
 
     # Validate LLM Output
     assert "summary_markdown" in result
@@ -73,7 +76,9 @@ def test_generate_custom_report_wrangling_fill(sample_data, mock_llm):
 def test_generate_custom_report_llm_failure(sample_data):
     # Setup LLM that raises an exception
     llm = MagicMock()
+    # Mock both invoke and __call__ just in case, plus make the chain.invoke fail
     llm.invoke.side_effect = Exception("API Error")
+    llm.side_effect = Exception("API Error")
 
     result = generate_custom_report(
         data_raw=sample_data,
@@ -86,3 +91,4 @@ def test_generate_custom_report_llm_failure(sample_data):
 
     assert "summary_markdown" in result
     assert "Failed to generate textual summary" in result["summary_markdown"]
+    assert "API Error" in result["summary_markdown"]

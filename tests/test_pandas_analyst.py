@@ -8,6 +8,9 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../s
 from eda_agents.multiagents.pandas_data_analyst import PandasDataAnalystAgent
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage
+from dotenv import load_dotenv
+
+load_dotenv()
 
 def test_pandas_analyst():
     print("Testing PandasDataAnalystAgent...")
@@ -27,7 +30,19 @@ def test_pandas_analyst():
         "hitl_enabled": False
     }
     
-    result = agent.invoke(state)
+    config = {"configurable": {"thread_id": "test-thread-1"}}
+    
+    print("Step 1: Planning...")
+    result = agent.invoke(state, config=config)
+    
+    # Check if we are interrupted (plan generated but code not yet)
+    if "plan" in result and not result.get("code"):
+        print("Interrupted after planning. Plan:", result["plan"])
+        print("Step 2: Proceeding to code generation...")
+        # To proceed, we invoke with None (as per langgraph pattern for resuming)
+        # or we follow the agent's logic.
+        result = agent.invoke(None, config=config)
+
     print("Agent Execution Completed.")
     print("Final State Keys:", result.keys())
     print("Analysis Result:", json.dumps(result.get("analysis_result"), indent=2))
