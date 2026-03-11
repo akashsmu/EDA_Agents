@@ -57,5 +57,6 @@ def test_supervisor_invoke(supervisor, sample_df):
     }
     
    
-    result = supervisor.invoke(state)
+    config = {"configurable": {"thread_id": "test_thread"}}
+    result = supervisor.invoke(state, config=config)
     assert "messages" in result

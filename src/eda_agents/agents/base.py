@@ -18,6 +18,13 @@ class BaseAgent:
         """
         raise NotImplementedError
 
+    @property
+    def graph(self):
+        """Exposes the compiled graph."""
+        if not self._compiled_graph:
+            self._compiled_graph = self._make_compiled_graph()
+        return self._compiled_graph
+
     def invoke(self, inputs: Dict[str, Any], config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
         Invokes the agent's graph.

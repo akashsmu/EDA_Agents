@@ -19,6 +19,7 @@ class SupervisorState(TypedDict):
     data_raw: Union[dict, list]
     next_worker: str
     final_output: Any
+    hitl_enabled: bool # Added to support HITL in worker agents
 
 class SupervisorAgent(BaseAgent):
     def __init__(self, model: ChatOpenAI):
@@ -103,18 +104,20 @@ class SupervisorAgent(BaseAgent):
         # Prepare input for the specialized agent
         agent_state = {
             "messages": state["messages"],
-            "data_raw": state["data_raw"]
+            "data_raw": state["data_raw"],
+            "hitl_enabled": state.get("hitl_enabled", False)
         }
         
         result = agent.invoke(agent_state)
         
         # Update supervisor state with worker results
         # Assuming the worker returns 'cleaned_data' or similar
-        new_data = result.get("cleaned_data", state["data_raw"])
+        new_data = result.get("cleaned_data") or result.get("wrangled_data") or state["data_raw"]
         
         return {
             "messages": [AIMessage(content="Cleaning step completed.")],
-            "data_raw": new_data
+            "data_raw": new_data,
+            "final_output": result # Pass along for the UI
         }
 
     def wrangling_node(self, state: SupervisorState):
@@ -123,7 +126,8 @@ class SupervisorAgent(BaseAgent):
         
         agent_state = {
             "messages": state["messages"],
-            "data_raw": state["data_raw"]
+            "data_raw": state["data_raw"],
+            "hitl_enabled": state.get("hitl_enabled", False)
         }
         
         result = agent.invoke(agent_state)
@@ -132,7 +136,8 @@ class SupervisorAgent(BaseAgent):
         
         return {
             "messages": [AIMessage(content="Wrangling step completed.")],
-            "data_raw": new_data
+            "data_raw": new_data,
+            "final_output": result # Pass along for the UI
         }
 
     def visualization_node(self, state: SupervisorState):
@@ -141,7 +146,8 @@ class SupervisorAgent(BaseAgent):
         
         agent_state = {
             "messages": state["messages"],
-            "data_raw": state["data_raw"]
+            "data_raw": state["data_raw"],
+            "hitl_enabled": state.get("hitl_enabled", False)
         }
         
         result = agent.invoke(agent_state)
@@ -149,5 +155,5 @@ class SupervisorAgent(BaseAgent):
         # Visualization doesn't usually change data_raw, but returns a plotly_json
         return {
             "messages": [AIMessage(content="Visualization created.")],
-            "final_output": result.get("plotly_json")
+            "final_output": result # Pass the full result including plan and plotly_json
         }
