@@ -56,8 +56,7 @@ def test_supervisor_invoke(supervisor, sample_df):
         "next_worker": ""
     }
     
-    # Limit execution or mock components for unit testing if needed
-    # For now, let's see if a basic invoke works (might need openai key and connectivity)
-    # result = supervisor.invoke(state)
-    # assert "messages" in result
-    pass
+   
+    config = {"configurable": {"thread_id": "test_thread"}}
+    result = supervisor.invoke(state, config=config)
+    assert "messages" in result

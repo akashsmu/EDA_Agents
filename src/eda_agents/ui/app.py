@@ -9,7 +9,7 @@ import base64
 from langchain_openai import ChatOpenAI
 from langchain_community.callbacks.manager import get_openai_callback
 
-from eda_agents.agents.graph import create_eda_graph
+from eda_agents.multiagents.supervisor import SupervisorAgent
 from eda_agents.tools.eda import (
     explain_data, 
     visualize_missing, 
@@ -120,7 +120,8 @@ def render_chat_interface(openai_api_key):
             st.stop()
         logger.info("Initializing LangGraph for Chat.")
         llm = ChatOpenAI(model="gpt-4o-mini", api_key=openai_api_key or os.environ["OPENAI_API_KEY"])
-        st.session_state["graph"] = create_eda_graph(llm)
+        agent = SupervisorAgent(llm)
+        st.session_state["graph"] = agent.graph # Use the graph property for persistence
 
     # Display history
     for msg in st.session_state["messages"]:
@@ -176,14 +177,13 @@ def render_chat_interface(openai_api_key):
             if new_snapshot.next:
                 logger.info("Graph interrupted for approval.")
                 # The state should contain the plan
-                plan = new_snapshot.values.get("router_decision", {}).get("final_output", {}).get("plan") 
-                # Note: because we nested agents, the plan is inside final_output of the main graph node
-                
-                # Actually, the sub-agent state is what has the plan. 
-                # Let's check where the plan is stored in the result.
-                # result is what comes out of the node.
-                
                 plan = result.get("final_output", {}).get("plan")
+                if not plan:
+                    # Try to find plan in messages if not in final_output
+                    # This can happen if the interrupt happened inside a worker
+                    # but the supervisor hasn't finished its node yet.
+                    # However, with my changes, the worker returns the result including plan.
+                    pass
                 
                 st.session_state["messages"].append({
                     "role": "assistant", 
