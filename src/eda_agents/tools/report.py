@@ -42,20 +42,20 @@ def generate_custom_report(data_raw: list[dict], wrangling_methods: list[str], a
         compiled_texts.append(f"Data Summary:\n{txt}")
         
     if "Descriptive Statistics" in analysis_methods:
-        txt, art = describe_dataset.invoke({"data_raw": cleaned_data_raw})
+        txt, art = describe_dataset.func(data_raw=cleaned_data_raw)
         # Adding some stringified dataframe representation for the LLM
         stats_df_str = pd.DataFrame(art['describe_df']).to_string()
         compiled_texts.append(f"Descriptive Statistics:\n{txt}\n{stats_df_str}")
         artifacts["descriptive_statistics"] = art
         
     if "Missing Values Plot" in analysis_methods:
-        txt, art = visualize_missing.invoke({"data_raw": cleaned_data_raw})
+        txt, art = visualize_missing.func(data_raw=cleaned_data_raw)
         compiled_texts.append(f"Missing Values Analysis:\n{txt}")
         artifacts["missing_plots"] = art
         
     if "Correlation Funnel" in analysis_methods and target_col:
         try:
-            txt, art = generate_correlation_funnel.invoke({"data_raw": cleaned_data_raw, "target": target_col})
+            txt, art = generate_correlation_funnel.func(data_raw=cleaned_data_raw, target=target_col)
             compiled_texts.append(f"Correlation Funnel (Target: {target_col}):\n{txt}")
             artifacts["correlation_funnel"] = art
         except Exception as e:

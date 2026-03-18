@@ -274,7 +274,7 @@ elif navigation == "📊 Visualize Data":
             st.markdown("#### 📊 Descriptive Statistics")
             from eda_agents.tools.eda import describe_dataset
             with st.spinner("Calculating statistics..."):
-                res, artifact = describe_dataset.invoke({"data_raw": st.session_state["data_raw"]})
+                res, artifact = describe_dataset.func(data_raw=st.session_state["data_raw"])
                 if "describe_df" in artifact:
                     df_stats = pd.DataFrame(artifact["describe_df"])
                     st.dataframe(df_stats, use_container_width=True)
@@ -285,7 +285,7 @@ elif navigation == "📊 Visualize Data":
         with tab3:
             st.markdown("#### 🔍 Missing Value Analysis")
             with st.spinner("Analyzing missing data..."):
-                res, artifact = visualize_missing.invoke({"data_raw": st.session_state["data_raw"]})
+                res, artifact = visualize_missing.func(data_raw=st.session_state["data_raw"])
                 st.write(res)
                 
                 # Show plots in a grid or sequence
@@ -334,7 +334,7 @@ elif navigation == "📋 Deep Reports":
             if st.button("Generate Detailed Report", use_container_width=True):
                  logger.info("UI Button: Sweetviz Report clicked.")
                  with st.spinner("Analyzing..."):
-                      res, artifact = generate_sweetviz_report.invoke({"data_raw": st.session_state["data_raw"], "include_html": True})
+                      res, artifact = generate_sweetviz_report.func(data_raw=st.session_state["data_raw"], include_html=True)
                       st.success("Report Ready!")
                       st.components.v1.html(artifact["report_html"], height=800, scrolling=True)
 
