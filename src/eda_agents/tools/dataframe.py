@@ -60,48 +60,50 @@ def _summarize_dataframe(
     # 3. Calculate missing value stats
     missing_stats = (df.isna().sum() / len(df) * 100).sort_values(ascending=False)
     missing_summary = "\n".join(
-        [f"{col}: {val:.2f}%" for col, val in missing_stats.items()]
+        [f"- **{col}**: {val:.2f}%" for col, val in missing_stats.items()]
     )
 
     # 4. Get column data types
-    column_types = "\n".join([f"{col}: {dtype}" for col, dtype in df.dtypes.items()])
+    column_types = "\n".join([f"- **{col}**: {dtype}" for col, dtype in df.dtypes.items()])
 
     # 5. Get unique value counts
     unique_counts = df.nunique()
     unique_counts_summary = "\n".join(
-        [f"{col}: {count}" for col, count in unique_counts.items()]
+        [f"- **{col}**: {count}" for col, count in unique_counts.items()]
     )
 
     # 6. Generate the summary text
     if not skip_stats:
-        summary_text = f"""
-        Dataset Name: {dataset_name}
-        ----------------------------
-        Shape: {df.shape[0]} rows x {df.shape[1]} columns
+        summary_text = f"""### Dataset Name: {dataset_name}
+**Shape**: {df.shape[0]} rows x {df.shape[1]} columns
 
-        Column Data Types:
-        {column_types}
+#### Column Data Types
+{column_types}
 
-        Missing Value Percentage:
-        {missing_summary}
+#### Missing Value Percentage
+{missing_summary}
 
-        Unique Value Counts:
-        {unique_counts_summary}
+#### Unique Value Counts
+{unique_counts_summary}
 
-        Data (first {n_sample} rows):
-        {df.head(n_sample).to_string()}
+#### Data (first {n_sample} rows)
+```text
+{df.head(n_sample).to_string()}
+```
 
-        Data Description:
-        {df.describe().to_string()}
+#### Data Description
+```text
+{df.describe().to_string()}
+```
 
-        Data Info:
-        {info_text}
-        """
+#### Data Info
+```text
+{info_text}
+```
+"""
     else:
-        summary_text = f"""
-        Dataset Name: {dataset_name}
-        ----------------------------
-        Shape: {df.shape[0]} rows x {df.shape[1]} columns
-        """
+        summary_text = f"""### Dataset Name: {dataset_name}
+**Shape**: {df.shape[0]} rows x {df.shape[1]} columns
+"""
     
     return summary_text

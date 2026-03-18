@@ -267,7 +267,7 @@ elif navigation == "📊 Visualize Data":
             st.markdown("#### 📝 Narrative Overview")
             with st.spinner("Generating narrative summary..."):
                 summary = explain_data.invoke({"data_raw": st.session_state["data_raw"]})
-                st.info(summary)
+                st.markdown(summary)
                 logger.info("Auto-run: explain_data completed.")
 
         with tab2:
