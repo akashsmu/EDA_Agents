@@ -79,6 +79,21 @@ def init_session_state():
 
 init_session_state()
 
+@st.cache_data(show_spinner=False)
+def generate_data_explanation(data_summary_text: str, api_key: str):
+    if not api_key and "OPENAI_API_KEY" not in os.environ:
+        return "To view the AI Executive Summary, please provide your OpenAI API Key in the sidebar."
+    try:
+        from langchain_openai import ChatOpenAI
+        from langchain_core.messages import SystemMessage, HumanMessage
+        llm = ChatOpenAI(model="gpt-4o-mini", api_key=api_key or os.environ.get("OPENAI_API_KEY"))
+        sys_msg = SystemMessage(content="You are an expert Data Analyst. Given this dataset summary, write a succinct, data-grounded, clear, and detailed executive explanation of the dataset's characteristics, potential issues (missing data, skewness, high zeros, imbalance), and interesting patterns. Use 2-3 short paragraphs formatting with markdown.")
+        human_msg = HumanMessage(content=data_summary_text[:4000])
+        res = llm.invoke([sys_msg, human_msg])
+        return res.content
+    except Exception as e:
+        return f"Failed to generate explanation: {e}"
+
 # --- Sidebar Navigation ---
 with st.sidebar:
     st.image("https://img.icons8.com/clouds/100/000000/data-configuration.png", width=80)
@@ -87,7 +102,7 @@ with st.sidebar:
     navigation = st.radio(
         "Navigation",
         options=["🏠 Home", "💬 AI Chat Analysis", "📊 Visualize Data", "🧹 Wrangle Data", "📋 Deep Reports"],
-        index=0 if st.session_state["data_raw"] is None else 1
+        index=0 if st.session_state["data_raw"] is None else 2
     )
     logger.debug(f"User navigated to: {navigation}")
     
@@ -260,8 +275,15 @@ elif navigation == "📊 Visualize Data":
     else:
         st.markdown("### 📊 Automated Data Insights")
         
+        # Get AI Data Explanation globally for this page
+        with st.expander("🤖 AI Executive Data Summary", expanded=True):
+            with st.spinner("Analyzing dataset patterns..."):
+                raw_summary = explain_data.invoke({"data_raw": st.session_state["data_raw"]})
+                ai_explanation = generate_data_explanation(raw_summary, openai_api_key)
+                st.markdown(ai_explanation)
+        
         # Tabs for different analysis views
-        tab1, tab2, tab3 = st.tabs(["📝 Narrative Summary", "📊 Table Statistics", "🔍 Missing Data Audit"])
+        tab1, tab2, tab3, tab4 = st.tabs(["📝 Narrative Summary", "📊 Table Statistics", "🔍 Missing Data Audit", "📈 Data Distributions"])
         
         with tab1:
             st.markdown("#### 📝 Narrative Overview")
@@ -277,7 +299,7 @@ elif navigation == "📊 Visualize Data":
                 res, artifact = describe_dataset.func(data_raw=st.session_state["data_raw"])
                 if "describe_df" in artifact:
                     df_stats = pd.DataFrame(artifact["describe_df"])
-                    st.dataframe(df_stats, use_container_width=True)
+                    st.dataframe(df_stats.astype(str), use_container_width=True)
                 else:
                     st.write(res)
                 logger.info("Auto-run: describe_dataset completed.")
@@ -292,6 +314,35 @@ elif navigation == "📊 Visualize Data":
                 for name, plot_data in artifact.items():
                     st.image(base64.b64decode(plot_data), caption=name.replace('_', ' ').title())
                 logger.info("Auto-run: visualize_missing completed.")
+
+        with tab4:
+            st.markdown("#### 📈 Feature Distributions")
+            st.write("Visualizing the distributions of key columns.")
+            df_plot = pd.DataFrame(st.session_state["data_raw"])
+            
+            # Select up to 4 numeric and 2 categorical columns to plot
+            numeric_cols = df_plot.select_dtypes(include='number').columns.tolist()
+            cat_cols = df_plot.select_dtypes(exclude='number').columns.tolist()
+            
+            import plotly.express as px
+            
+            if numeric_cols:
+                st.markdown("**Numerical Feature Distributions**")
+                cols_to_plot = numeric_cols[:4]
+                for col in cols_to_plot:
+                    fig = px.histogram(df_plot, x=col, title=f"Distribution of {col}", template="plotly_white", color_discrete_sequence=["#636EFA"], marginal="box")
+                    st.plotly_chart(fig, use_container_width=True)
+            
+            if cat_cols:
+                st.markdown("**Categorical Feature Frequencies**")
+                cols_to_plot = cat_cols[:2]
+                for col in cols_to_plot:
+                    # Check unique counts to avoid crazy bar charts
+                    if df_plot[col].nunique() < 20:
+                        val_counts = df_plot[col].value_counts().reset_index()
+                        val_counts.columns = [col, 'Count']
+                        fig = px.bar(val_counts, x=col, y='Count', title=f"Frequency of {col}", template="plotly_white", color_discrete_sequence=["#EF553B"], text_auto=True)
+                        st.plotly_chart(fig, use_container_width=True)
 
 # --- Wrangle Data ---
 elif navigation == "🧹 Wrangle Data":
