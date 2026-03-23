@@ -57,51 +57,102 @@ def _summarize_dataframe(
     df.info(buf=buffer)
     info_text = buffer.getvalue()
 
-    # 3. Calculate missing value stats
-    missing_stats = (df.isna().sum() / len(df) * 100).sort_values(ascending=False)
-    missing_summary = "\n".join(
-        [f"{col}: {val:.2f}%" for col, val in missing_stats.items()]
-    )
+    total_rows = len(df)
+    missing_stats = (df.isna().sum() / total_rows * 100)
+    
+    # Calculate dataset-level comprehensive stats
+    duplicated_rows = df.duplicated().sum()
+    duplicate_pct = (duplicated_rows / total_rows * 100) if total_rows > 0 else 0
+    total_memory = df.memory_usage(deep=True).sum() / (1024 * 1024) # MB
+    
+    # 3. Create a unified markdown table for columns
+    table_rows = []
+    for col in df.columns:
+        dtype = str(df[col].dtype)
+        is_numeric = pd.api.types.is_numeric_dtype(df[col])
+        is_object = pd.api.types.is_object_dtype(df[col])
+        
+        missing_pct = missing_stats[col]
+        nunique = df[col].nunique()
+        nunique_pct = (nunique / total_rows * 100) if total_rows > 0 else 0
+        
+        # Determine comprehensive highlights/notes
+        flags = []
+        if missing_pct > 0:
+            if missing_pct > 50:
+                flags.append("High Missing")
+            
+        if nunique == 1:
+            flags.append("Constant")
+        elif nunique == 2:
+            flags.append("Binary")
+        elif nunique == total_rows and total_rows > 0:
+            flags.append("All Unique")
+        elif nunique < 10:
+            flags.append("Low Cardinality")
+            
+        # Comprehensive numeric stats
+        zeros_pct = 0.0
+        skewness_str = "-"
+        if is_numeric and missing_pct < 100:
+            zeros_pct = (df[col] == 0).sum() / total_rows * 100
+            try:
+                skewness = df[col].skew()
+                skewness_str = f"{skewness:.2f}"
+                if abs(skewness) > 1.5:
+                    flags.append("Highly Skewed")
+            except:
+                pass
+                
+        # Comprehensive categorical stats
+        top_val_str = "-"
+        if (is_object or nunique < 20) and missing_pct < 100 and nunique < total_rows:
+            try:
+                top_val = df[col].mode().iloc[0] if not df[col].mode().empty else "N/A"
+                if len(str(top_val)) > 15: 
+                    top_val_str = f"{str(top_val)[:12]}..."
+                else:
+                    top_val_str = f"{top_val}"
+            except:
+                pass
+            
+        flags_str = ", ".join(flags) if flags else "Normal"
+        zeros_str = f"{zeros_pct:.1f}%" if is_numeric else "-"
+        
+        table_rows.append(f"| **{col}** | `{dtype}` | {missing_pct:.2f}% | {nunique} ({nunique_pct:.1f}%) | {zeros_str} | {skewness_str} | {top_val_str} | {flags_str} |")
 
-    # 4. Get column data types
-    column_types = "\n".join([f"{col}: {dtype}" for col, dtype in df.dtypes.items()])
+    table_header = "| Column Name | Data Type | Missing % | Unique | Zeros % | Skewness | Top Mode | Flags |\n|---|---|---|---|---|---|---|---|"
+    table_content = "\n".join(table_rows)
 
-    # 5. Get unique value counts
-    unique_counts = df.nunique()
-    unique_counts_summary = "\n".join(
-        [f"{col}: {count}" for col, count in unique_counts.items()]
-    )
-
-    # 6. Generate the summary text
+    # 4. Generate the narrative summary text
     if not skip_stats:
-        summary_text = f"""
-        Dataset Name: {dataset_name}
-        ----------------------------
-        Shape: {df.shape[0]} rows x {df.shape[1]} columns
+        summary_text = f"""### Dataset Overview: `{dataset_name}`
+**Shape**: {df.shape[0]} rows | {df.shape[1]} columns
+**Duplicates**: {duplicated_rows} rows ({duplicate_pct:.1f}%)
+**Memory Usage**: {total_memory:.2f} MB
 
-        Column Data Types:
-        {column_types}
+#### Column Profile
+{table_header}
+{table_content}
 
-        Missing Value Percentage:
-        {missing_summary}
+#### Data Preview (first {n_sample} rows)
+```text
+{df.head(n_sample).to_string()}
+```
 
-        Unique Value Counts:
-        {unique_counts_summary}
+#### Data Description (Numerical)
+```text
+{df.describe().to_string()}
+```
 
-        Data (first {n_sample} rows):
-        {df.head(n_sample).to_string()}
-
-        Data Description:
-        {df.describe().to_string()}
-
-        Data Info:
-        {info_text}
-        """
+#### System Data Info
+```text
+{info_text}
+```
+"""
     else:
-        summary_text = f"""
-        Dataset Name: {dataset_name}
-        ----------------------------
-        Shape: {df.shape[0]} rows x {df.shape[1]} columns
-        """
+        summary_text = f"""### Dataset Overview: `{dataset_name}`
+**Shape**: {df.shape[0]} rows | {df.shape[1]} columns
+"""
     
     return summary_text
