@@ -15,6 +15,7 @@
    ```bash
    pytest tests/
    ```
+5. Dont use poetry for any changes in the project. Use pip instead.
 
 ## Architectural Context
 
@@ -47,10 +48,15 @@
 - Added `DataCleaningAgent` to focus on automated data quality (nulls, outliers, type formatting).
 - Refactored existing agents (`DataVisualizationAgent` and `DataWranglingAgent`) to leverage the Factory design pattern, streamlining instantiation and lifecycle management.
 
+### 7. Docker Integration
+- Created a comprehensive `Dockerfile` using `python:3.10-slim`, establishing a non-root user and installing dependencies natively via `pip`.
+- Configured a `.dockerignore` file to exclude local caches (`__pycache__`, `.pytest_cache`) and the `eda` virtual environment.
+- Created `docker-compose.yml` to orchestrate build process, manage port binding (`8501`), `.env` injection, and volume mounting for `logs/` and `reports/`.
+
 ## Current Status & Pending Tasks (Living Tracker)
 *This section must be updated at the end of each work iteration to store context for the next session.*
 
-- **Currently Working On**: Initializing the project memory and contextual tracker.
+- **Currently Working On**: Finalized the Docker integration.
 - **Pending/Next Steps**: 
   - (Add tasks here based on user requests in future iterations)
 - **Known Issues/Blockers**: None Currently.

@@ -1,0 +1,24 @@
+# Git
+.git
+.gitignore
+
+# Poetry/Virtual Environments
+eda/
+.venv/
+venv/
+poetry.lock
+
+# Python Caches
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Pytest & Coverage
+.pytest_cache/
+.coverage
+htmlcov/
+tests/
+
+# Environment Variables
+.env

@@ -1,0 +1,19 @@
+services:
+  eda_app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: eda_agents_app
+    ports:
+      - "8501:8501"
+    env_file:
+      - .env
+    volumes:
+      - ./logs:/app/logs
+      - ./reports:/app/reports
+    restart: unless-stopped
+    healthcheck:
+      test: curl --fail http://localhost:8501/_stcore/health || exit 1
+      interval: 30s
+      timeout: 10s
+      retries: 3
