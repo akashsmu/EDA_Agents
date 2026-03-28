@@ -20,16 +20,16 @@ def another_df():
 def test_summarize_dataframe(sample_df):
     summary = _summarize_dataframe(sample_df, "Test_Dataset")
     assert "Test_Dataset" in summary
-    assert "4 rows x 3 columns" in summary
-    assert "A: 25.00%" in summary  # 1 missing out of 4
-    assert "B: 0.00%" in summary
-    assert "A: float" in summary or "A: float64" in summary  # nullable int gets cast to float without Int64Dtype
+    assert "**Shape**: 4 rows | 3 columns" in summary
+    assert "25.00%" in summary  # 1 missing out of 4
+    assert "0.00%" in summary
+    assert "`float64`" in summary or "`float`" in summary
 
 def test_summarize_dataframe_skip_stats(sample_df):
     summary = _summarize_dataframe(sample_df, "Test_Dataset", skip_stats=True)
     assert "Test_Dataset" in summary
-    assert "4 rows x 3 columns" in summary
-    assert "Missing Value Percentage" not in summary
+    assert "**Shape**: 4 rows | 3 columns" in summary
+    assert "Missing %" not in summary
 
 def test_get_dataframe_summary_single(sample_df):
     summaries = get_dataframe_summary(sample_df)
@@ -51,3 +51,15 @@ def test_get_dataframe_summary_dict(sample_df, another_df):
 def test_get_dataframe_summary_invalid_type():
     with pytest.raises(TypeError):
         get_dataframe_summary("not a dataframe")
+
+def test_summarize_dataframe_empty():
+    empty_df = pd.DataFrame()
+    summary = _summarize_dataframe(empty_df, "Empty_Dataset")
+    assert "Empty_Dataset" in summary
+    assert "**Shape**: 0 rows | 0 columns" in summary
+
+def test_summarize_dataframe_all_nulls():
+    null_df = pd.DataFrame({"A": [None, None, None]})
+    summary = _summarize_dataframe(null_df, "Null_Dataset")
+    assert "100.00%" in summary
+

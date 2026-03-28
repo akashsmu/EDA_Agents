@@ -53,10 +53,18 @@
 - Configured a `.dockerignore` file to exclude local caches (`__pycache__`, `.pytest_cache`) and the `eda` virtual environment.
 - Created `docker-compose.yml` to orchestrate build process, manage port binding (`8501`), `.env` injection, and volume mounting for `logs/` and `reports/`.
 
+### 8. Comprehensive Framework Libraries Test
+- Created and updated `tests/test_libraries.py` to ensure all core frameworks required by the project (LangChain, LangGraph, Pandas, OpenPyXL, Plotly, Streamlit) are not only importable but also functionally sound (e.g. creating DataFrames, StateGraphs, Workbooks, etc.), as required by the documentation.
+
+### 9. Comprehensive Test Suite Refactor
+- Expanded unit tests across the whole project (`test_tools_dataframe.py`, `test_agents_wrangling.py`, `test_tools_report.py`, `test_supervisor.py`, `test_pandas_analyst.py`).
+- Mapped OpenAI endpoints to use `unittest.mock` `MagicMock` to prevent real API calls and make executions stable.
+- Addressed boundary anomalies including missing elements, bad inputs, and edge configurations to prevent pipeline exceptions.
+
 ## Current Status & Pending Tasks (Living Tracker)
 *This section must be updated at the end of each work iteration to store context for the next session.*
 
-- **Currently Working On**: Finalized the Docker integration.
+- **Currently Working On**: Test coverage expansion completed.
 - **Pending/Next Steps**: 
   - (Add tasks here based on user requests in future iterations)
 - **Known Issues/Blockers**: None Currently.

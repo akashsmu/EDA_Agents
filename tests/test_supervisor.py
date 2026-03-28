@@ -4,9 +4,17 @@ from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage
 from eda_agents.multiagents.supervisor import SupervisorAgent
 
+from unittest.mock import MagicMock
+
 @pytest.fixture
 def supervisor():
-    model = ChatOpenAI(model="gpt-4o")
+    model = MagicMock()
+    # Mocking the supervisor router response
+    mock_resp = MagicMock()
+    mock_resp.content = "visualization"
+    model.invoke.return_value = mock_resp
+    model.return_value = mock_resp
+    # Mock the chain invocation from prompt | model
     return SupervisorAgent(model)
 
 @pytest.fixture
@@ -60,3 +68,19 @@ def test_supervisor_invoke(supervisor, sample_df):
     config = {"configurable": {"thread_id": "test_thread"}}
     result = supervisor.invoke(state, config=config)
     assert "messages" in result
+
+def test_supervisor_empty_history(supervisor, sample_df):
+    # Test how supervisor behaves with empty messages or unhandled request
+    state = {
+        "messages": [],
+        "data_raw": sample_df.to_dict(orient="records"),
+        "next_worker": ""
+    }
+    # It might return 'FINISH' or hallucinate a next_worker if there's no prompt
+    result = supervisor.supervisor_node(state)
+    assert "next_worker" in result
+    
+def test_supervisor_missing_model():
+    # Because it is allowed to pass None, check properties when None is passed
+    agent = SupervisorAgent(None)
+    assert agent.model is None
