@@ -90,3 +90,18 @@ def test_execute_wrangling_code_failure(agent, base_state):
     assert new_state["error"] is not None
     assert "Test error" in new_state["error"]
     assert "wrangled_data" not in new_state
+
+def test_execute_wrangling_code_missing_function(agent, base_state):
+    base_state["code"] = "def completely_wrong_name(df):\n    return df"
+    new_state = agent.execute_wrangling_code(base_state)
+    
+    assert new_state["error"] is not None
+    assert "Function 'wrangle' not found" in new_state["error"] or "not found" in new_state["error"].lower() or "not defined" in new_state["error"].lower()
+
+def test_execute_wrangling_code_invalid_return(agent, base_state):
+    base_state["code"] = "def wrangle(df):\n    return 'not a dataframe or list'"
+    new_state = agent.execute_wrangling_code(base_state)
+    
+    assert new_state["error"] is not None
+    assert "has no attribute" in new_state["error"] or "list of dictionaries" in new_state["error"]
+

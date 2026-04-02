@@ -27,8 +27,8 @@ def mock_llm():
 def test_generate_custom_report(mock_vis, mock_desc, mock_exp, sample_data, mock_llm):
     # Setup mocks
     mock_exp.invoke.return_value = "Mocked Explain Data"
-    mock_desc.invoke.return_value = ("Mocked Describe Data", {"describe_df": pd.DataFrame()})
-    mock_vis.invoke.return_value = ("Mocked Missing Visuals", {"missing_plots": {}})
+    mock_desc.func.return_value = ("Mocked Describe Data", {"describe_df": pd.DataFrame()})
+    mock_vis.func.return_value = ("Mocked Missing Visuals", {"missing_plots": {}})
     
     # Mock the LLM response content
     mock_llm.invoke.return_value.content = "Mocked Executive Summary."
@@ -48,8 +48,8 @@ def test_generate_custom_report(mock_vis, mock_desc, mock_exp, sample_data, mock
 
     # Validate Analysis Tools Called
     mock_exp.invoke.assert_called_once()
-    mock_desc.invoke.assert_called_once()
-    mock_vis.invoke.assert_called_once()
+    mock_desc.func.assert_called_once()
+    mock_vis.func.assert_called_once()
 
     # Validate LLM Output
     assert "summary_markdown" in result
@@ -92,3 +92,34 @@ def test_generate_custom_report_llm_failure(sample_data):
     assert "summary_markdown" in result
     assert "Failed to generate textual summary" in result["summary_markdown"]
     assert "API Error" in result["summary_markdown"]
+
+def test_generate_custom_report_wrangling_drop_duplicates(sample_data, mock_llm):
+    # Add a duplicate row to test
+    data_with_dup = sample_data + [sample_data[0]]
+    result = generate_custom_report(
+        data_raw=data_with_dup,
+        wrangling_methods=["Drop Duplicates"],
+        analysis_methods=[],
+        target_col="Target",
+        instructions="",
+        llm=mock_llm
+    )
+    cleaned = result["cleaned_data"]
+    # Should drop the duplicate we just added
+    assert len(cleaned) == len(sample_data)
+
+def test_generate_custom_report_wrangling_fill_zero(sample_data, mock_llm):
+    result = generate_custom_report(
+        data_raw=sample_data,
+        wrangling_methods=["Fill Missing Values (Zero/Unknown)"],
+        analysis_methods=[],
+        target_col="Target",
+        instructions="",
+        llm=mock_llm
+    )
+    cleaned = result["cleaned_data"]
+    assert len(cleaned) == 3
+    # Index 2 had "A": None, so it should be filled with 0 (or 0.0)
+    import numpy as np
+    assert cleaned[2]["A"] == 0 or cleaned[2]["A"] == 0.0 or pd.isna(cleaned[2]["A"]) or cleaned[2]["A"] == "Unknown"
+

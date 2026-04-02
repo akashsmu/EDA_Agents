@@ -142,7 +142,7 @@ def _summarize_dataframe(
 
 #### Data Description (Numerical)
 ```text
-{df.describe().to_string()}
+{df.describe().to_string() if not df.columns.empty else "No columns to describe"}
 ```
 
 #### System Data Info
