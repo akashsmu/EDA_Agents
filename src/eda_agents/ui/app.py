@@ -306,43 +306,185 @@ elif navigation == "📊 Visualize Data":
 
         with tab3:
             st.markdown("#### 🔍 Missing Value Analysis")
-            with st.spinner("Analyzing missing data..."):
+            st.write("This section provides a visual summary of the completeness of your dataset. Understanding missing data is crucial for determining how to clean or impute your dataset before model training or deep analysis.")
+            
+            df_missing = pd.DataFrame(st.session_state["data_raw"])
+            total_cells = df_missing.size
+            missing_cells = df_missing.isnull().sum().sum()
+            missing_percent = (missing_cells / total_cells) * 100 if total_cells > 0 else 0
+            
+            col1, col2, col3 = st.columns(3)
+            col1.metric("Total Rows", f"{df_missing.shape[0]:,}")
+            col2.metric("Total Columns", f"{df_missing.shape[1]:,}")
+            col3.metric("Missing Cells (%)", f"{missing_percent:.2f}%")
+            
+            st.markdown("---")
+            
+            with st.spinner("Analyzing missing data patterns..."):
                 res, artifact = visualize_missing.func(data_raw=st.session_state["data_raw"])
-                st.write(res)
                 
-                # Show plots in a grid or sequence
-                for name, plot_data in artifact.items():
-                    st.image(base64.b64decode(plot_data), caption=name.replace('_', ' ').title())
+                tab_matrix, tab_bar, tab_heatmap = st.tabs(["🧩 Nullity Matrix", "📊 Missingness Bar", "🔥 Nullity Correlation Heatmap"])
+                
+                with tab_matrix:
+                    st.markdown("**Nullity Matrix**: Visualizes the presence (solid) and absence (blank) of data across all columns. It helps reveal patterns of missingness across rows.")
+                    if "matrix_plot" in artifact:
+                        st.image(base64.b64decode(artifact["matrix_plot"]), use_container_width=True)
+                
+                with tab_bar:
+                    st.markdown("**Missingness Bar**: A simple bar chart displaying the exact count of non-null values per column. Useful for quickly identifying entirely complete vs. heavily missing columns.")
+                    if "bar_plot" in artifact:
+                        st.image(base64.b64decode(artifact["bar_plot"]), use_container_width=True)
+                        
+                with tab_heatmap:
+                    st.markdown("**Nullity Correlation Heatmap**: Shows how strongly the presence or absence of one variable affects the presence of another. Values close to 1 indicate if one is missing, the other is likely missing too.")
+                    missing_cols_count = (df_missing.isnull().sum() > 0).sum()
+                    if missing_cols_count < 2:
+                        st.info("💡 **Note:** The Nullity Correlation Heatmap requires at least two columns with missing data to compute correlations. Since your dataset has fewer than two such columns, this plot will be empty.")
+                    if "heatmap_plot" in artifact:
+                        st.image(base64.b64decode(artifact["heatmap_plot"]), use_container_width=True)
+
                 logger.info("Auto-run: visualize_missing completed.")
 
         with tab4:
             st.markdown("#### 📈 Feature Distributions")
-            st.write("Visualizing the distributions of key columns.")
+            st.write("Explore the spread, central tendency, and frequencies of your dataset's features.")
             df_plot = pd.DataFrame(st.session_state["data_raw"])
             
-            # Select up to 4 numeric and 2 categorical columns to plot
             numeric_cols = df_plot.select_dtypes(include='number').columns.tolist()
             cat_cols = df_plot.select_dtypes(exclude='number').columns.tolist()
+            all_cols = numeric_cols + cat_cols
             
             import plotly.express as px
             
-            if numeric_cols:
-                st.markdown("**Numerical Feature Distributions**")
-                cols_to_plot = numeric_cols[:4]
-                for col in cols_to_plot:
-                    fig = px.histogram(df_plot, x=col, title=f"Distribution of {col}", template="plotly_white", color_discrete_sequence=["#636EFA"], marginal="box")
-                    st.plotly_chart(fig, use_container_width=True)
-            
-            if cat_cols:
-                st.markdown("**Categorical Feature Frequencies**")
-                cols_to_plot = cat_cols[:2]
-                for col in cols_to_plot:
-                    # Check unique counts to avoid crazy bar charts
-                    if df_plot[col].nunique() < 20:
-                        val_counts = df_plot[col].value_counts().reset_index()
+            if all_cols:
+                # Default to a few columns to show something immediately
+                default_cols = numeric_cols[:2] + cat_cols[:1] if len(numeric_cols) >= 2 and len(cat_cols) >= 1 else all_cols[:3]
+                selected_cols = st.multiselect("Select Features to Visualize:", all_cols, default=default_cols)
+                
+                for i, col in enumerate(selected_cols):
+                    st.markdown("---")
+                    
+                    # Cycle through some colors for variety
+                    colors = [px.colors.qualitative.Plotly, px.colors.qualitative.Prism, px.colors.qualitative.Vivid, px.colors.qualitative.Pastel]
+                    col_color_scale = colors[i % len(colors)]
+                    
+                    if col in numeric_cols:
+                        st.markdown(f"##### 🔹 Distribution Analysis of `{col}` (Numeric)")
+                        
+                        tab_hist, tab_box, tab_violin = st.tabs(["📊 Histogram", "📦 Box Plot", "🎻 Violin Plot"])
+                        
+                        with tab_hist:
+                            fig_hist = px.histogram(
+                                df_plot, 
+                                x=col, 
+                                title=f"Histogram of {col}", 
+                                color_discrete_sequence=[col_color_scale[0]],
+                                marginal="rug",
+                                opacity=0.85
+                            )
+                            fig_hist.update_layout(
+                                xaxis_title=f"{col} Values",
+                                yaxis_title="Count / Frequency",
+                                showlegend=False,
+                                hovermode="x unified",
+                                margin=dict(t=50, l=50, r=50, b=50),
+                                title_font=dict(size=18),
+                            )
+                            st.plotly_chart(fig_hist, use_container_width=True)
+                            
+                        with tab_box:
+                            fig_box = px.box(
+                                df_plot, 
+                                x=col, 
+                                title=f"Box Plot of {col}", 
+                                color_discrete_sequence=[col_color_scale[1 % len(col_color_scale)]],
+                                points="all" # Show all points for better outlier visibility
+                            )
+                            fig_box.update_layout(
+                                xaxis_title=f"{col} Values",
+                                margin=dict(t=50, l=50, r=50, b=50),
+                                title_font=dict(size=18),
+                            )
+                            st.plotly_chart(fig_box, use_container_width=True)
+                            
+                        with tab_violin:
+                            fig_violin = px.violin(
+                                df_plot, 
+                                x=col, 
+                                title=f"Violin Plot of {col}", 
+                                color_discrete_sequence=[col_color_scale[2 % len(col_color_scale)]],
+                                box=True, 
+                                points="all"
+                            )
+                            fig_violin.update_layout(
+                                xaxis_title=f"{col} Values",
+                                margin=dict(t=50, l=50, r=50, b=50),
+                                title_font=dict(size=18),
+                            )
+                            st.plotly_chart(fig_violin, use_container_width=True)
+                        
+                        series = df_plot[col].dropna()
+                        if not series.empty:
+                            c1, c2, c3, c4 = st.columns(4)
+                            c1.metric("Mean", f"{series.mean():.2f}")
+                            c2.metric("Median", f"{series.median():.2f}")
+                            c3.metric("Std Dev", f"{series.std():.2f}")
+                            c4.metric("Zeros (%)", f"{(series == 0).mean()*100:.2f}%")
+                            
+                        st.info(f"**Interpretation of `{col}` Graph**: The **Histogram** displays the frequency distribution across the numerical range. The **Box Plot** highlights the median, interquartile range (middle 50% of data), and potential outliers (points outside the whiskers). The **Violin Plot** combines a box plot with a kernel density plot giving a deeper understanding of the distribution's shape and modality.")
+                        
+                    else:
+                        st.markdown(f"##### 🔸 Frequency Analysis of `{col}` (Categorical)")
+                        
+                        val_counts = df_plot[col].value_counts(dropna=False).reset_index()
                         val_counts.columns = [col, 'Count']
-                        fig = px.bar(val_counts, x=col, y='Count', title=f"Frequency of {col}", template="plotly_white", color_discrete_sequence=["#EF553B"], text_auto=True)
-                        st.plotly_chart(fig, use_container_width=True)
+                        val_counts[col] = val_counts[col].fillna("Missing/NaN").astype(str)
+                        
+                        if len(val_counts) > 30:
+                            st.warning(f"High cardinality detected ({len(val_counts)} unique values). Showing top 30.")
+                            val_counts = val_counts.head(30)
+                            
+                        tab_bar, tab_pie = st.tabs(["📊 Bar Chart", "🥧 Pie Chart"])
+                        
+                        with tab_bar:
+                            fig_bar = px.bar(
+                                val_counts, 
+                                x=col, 
+                                y='Count', 
+                                title=f"Frequency Count for {col}", 
+                                color=col,
+                                color_discrete_sequence=col_color_scale,
+                                text_auto='.2s'
+                            )
+                            fig_bar.update_layout(
+                                xaxis_title=f"Categories of {col}",
+                                yaxis_title="Count / Number of Records",
+                                xaxis={'categoryorder':'total descending'},
+                                showlegend=False,
+                                margin=dict(t=50, l=50, r=50, b=50),
+                                title_font=dict(size=18),
+                                xaxis_tickangle=-45,
+                            )
+                            st.plotly_chart(fig_bar, use_container_width=True)
+                            
+                        with tab_pie:
+                            # If cardinality is huge, pie chart is messy. Just standard Plotly Pie
+                            fig_pie = px.pie(
+                                val_counts, 
+                                names=col, 
+                                values='Count', 
+                                title=f"Proportion Distribution of {col}", 
+                                color_discrete_sequence=col_color_scale,
+                                hole=0.3 # Make it a donut chart
+                            )
+                            fig_pie.update_traces(textposition='inside', textinfo='percent+label')
+                            fig_pie.update_layout(
+                                margin=dict(t=50, l=50, r=50, b=50),
+                                title_font=dict(size=18),
+                            )
+                            st.plotly_chart(fig_pie, use_container_width=True)
+                        
+                        st.info(f"**Interpretation of `{col}` Graph**: The **Bar Chart** visualizes the total record count for each respective category, ranked by frequency. The **Pie (Donut) Chart** provides a proportional view, showing what percentage of the entirety each category represents. Notice which categories dominate, or if there is a severe class imbalance.")
 
 # --- Wrangle Data ---
 elif navigation == "🧹 Wrangle Data":
