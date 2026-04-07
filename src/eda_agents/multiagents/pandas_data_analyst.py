@@ -41,7 +41,8 @@ class PandasDataAnalystAgent(BaseAgent):
         logger.info("Generating recommended steps for data analysis...")
         df = pd.DataFrame(state["data_raw"])
         summary = get_dataframe_summary(df, n_sample=5)[0]
-        instructions = state["messages"][-1].content
+        msg = state["messages"][-1]
+        instructions = msg.content if hasattr(msg, "content") else msg.get("content", "")
 
         prompt = ChatPromptTemplate.from_messages([
             ("system", """You are a senior data analyst using Pandas.
@@ -62,8 +63,9 @@ class PandasDataAnalystAgent(BaseAgent):
     def should_generate(self, state: AgentState):
         if state.get("hitl_enabled", False):
             # Check if the last message is an approval
-            last_msg = state["messages"][-1].content.lower()
-            if any(word in last_msg for word in ["approve", "proceed", "yes", "go"]):
+            last_msg = state["messages"][-1]
+            last_msg_content = last_msg.content if hasattr(last_msg, "content") else last_msg.get("content", "")
+            if any(word in last_msg_content.lower() for word in ["approve", "proceed", "yes", "go"]):
                 logger.info("HITL: Plan approved. Proceeding to code generation.")
                 return "generate"
             else:
@@ -76,7 +78,8 @@ class PandasDataAnalystAgent(BaseAgent):
     def generate_analysis_code(self, state: AgentState):
         logger.info("Generating data analysis code based on plan...")
         plan = state.get("plan", "Analyze the data as requested.")
-        instructions = state["messages"][-1].content
+        msg = state["messages"][-1]
+        instructions = msg.content if hasattr(msg, "content") else msg.get("content", "")
 
         prompt = ChatPromptTemplate.from_messages([
             ("system", """You are an expert data analyst using Pandas.
