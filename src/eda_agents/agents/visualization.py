@@ -172,13 +172,15 @@ if __name__ == "__main__":
         except json.JSONDecodeError:
             logger.error("Failed to parse plotly JSON output.")
 
+            truncated = result[:500] + "... [TRUNCATED]" if len(result) > 500 else result
+
             # --- Phase 5: fallback chart on parse failure at final retry ---
             if state.get("retry_count", 0) >= 2:
                 return self._try_fallback(
-                    state, f"Failed to parse output: {result}"
+                    state, f"Failed to parse output: {truncated}"
                 )
 
-            return {"error": f"Failed to parse output: {result}"}
+            return {"error": f"Failed to parse output: {truncated}"}
 
     def fix_code(self, state: AgentState):
         error = state["error"]

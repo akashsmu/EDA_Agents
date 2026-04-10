@@ -157,7 +157,8 @@ if __name__ == "__main__":
             return {"analysis_result": analysis_result, "error": None}
         except json.JSONDecodeError:
             logger.error("Failed to parse analysis JSON output.")
-            return {"error": f"Failed to parse output: {{result}}"}
+            truncated = result[:500] + "... [TRUNCATED]" if len(result) > 500 else result
+            return {"error": f"Failed to parse output: {truncated}"}
 
     def fix_analysis_code(self, state: AgentState):
         error = state["error"]

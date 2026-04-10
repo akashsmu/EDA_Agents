@@ -155,4 +155,8 @@ def _summarize_dataframe(
 **Shape**: {df.shape[0]} rows | {df.shape[1]} columns
 """
     
+    # Prevent massive token consumption on very large datasets
+    if len(summary_text) > 20000:
+        summary_text = summary_text[:20000] + "\n\n...[TRUNCATED due to length constraints]..."
+
     return summary_text

@@ -143,7 +143,8 @@ if __name__ == "__main__":
             return {"wrangled_data": wrangled_data, "error": None}
         except json.JSONDecodeError:
             logger.error("Failed to parse wrangled JSON output.")
-            return {"error": f"Failed to parse output: {result}"}
+            truncated = result[:500] + "... [TRUNCATED]" if len(result) > 500 else result
+            return {"error": f"Failed to parse output: {truncated}"}
 
     def fix_wrangling_code(self, state: AgentState):
         error = state["error"]
