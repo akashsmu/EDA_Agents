@@ -8,6 +8,7 @@ import json
 import base64
 from langchain_openai import ChatOpenAI
 from langchain_community.callbacks.manager import get_openai_callback
+from langchain_core.messages import HumanMessage, SystemMessage
 
 from eda_agents.multiagents.supervisor import SupervisorAgent
 from eda_agents.tools.eda import (
@@ -139,35 +140,39 @@ def render_chat_interface(openai_api_key):
         st.session_state["graph"] = agent.graph # Use the graph property for persistence
 
     # Display history
-    for msg in st.session_state["messages"]:
+    for msg_idx, msg in enumerate(st.session_state["messages"]):
         with st.chat_message(msg["role"]):
             st.write(msg["content"])
             if "image" in msg and msg["image"]:
-                st.plotly_chart(msg["image"])
+                st.plotly_chart(msg["image"], key=f"chat_img_{msg_idx}")
             if "plan" in msg and msg["plan"]:
                 with st.expander("📝 Recommended Plan", expanded=True):
                     st.markdown(msg["plan"])
 
     user_input = st.chat_input("Ask about your data (e.g., 'Show Age distribution', 'Drop columns X')")
     
+    preset_action = st.session_state.pop("preset_action", None)
+    
     # HITL Approval Button (shown only if graph is at a breakpoint)
     if st.session_state.get("pending_approval"):
         if st.button("✅ Approve & Proceed", use_container_width=True):
             logger.info("User approved the plan.")
-            user_input = "Approve and proceed" # Simulate approval message
+            preset_action = "Approve and proceed" # Simulate approval message
             st.session_state["pending_approval"] = False
 
-    if user_input:
-        logger.info(f"User interaction: {user_input}")
-        st.session_state["messages"].append({"role": "user", "content": user_input})
+    active_input = user_input or preset_action
+
+    if active_input:
+        logger.info(f"User interaction: {active_input}")
+        st.session_state["messages"].append({"role": "user", "content": active_input})
         # with st.chat_message("user"): # Removed to avoid double render after rerun
-        #     st.write(user_input)
+        #     st.write(active_input)
 
         with st.spinner("🤖 Thinking..."):
             # Prepare state
             # If we are resuming, we need to provide the approval message
             initial_state = {
-                "messages": [{"role": "user", "content": user_input}],
+                "messages": [HumanMessage(content=active_input)],
                 "data_raw": st.session_state["data_raw"],
                 "hitl_enabled": st.session_state.get("hitl_enabled", False)
             }
@@ -390,7 +395,7 @@ elif navigation == "📊 Visualize Data":
                                 margin=dict(t=50, l=50, r=50, b=50),
                                 title_font=dict(size=18),
                             )
-                            st.plotly_chart(fig_hist, use_container_width=True)
+                            st.plotly_chart(fig_hist, use_container_width=True, key=f"hist_{i}_{col}")
                             
                         with tab_box:
                             fig_box = px.box(
@@ -405,7 +410,7 @@ elif navigation == "📊 Visualize Data":
                                 margin=dict(t=50, l=50, r=50, b=50),
                                 title_font=dict(size=18),
                             )
-                            st.plotly_chart(fig_box, use_container_width=True)
+                            st.plotly_chart(fig_box, use_container_width=True, key=f"box_{i}_{col}")
                             
                         with tab_violin:
                             fig_violin = px.violin(
@@ -421,7 +426,7 @@ elif navigation == "📊 Visualize Data":
                                 margin=dict(t=50, l=50, r=50, b=50),
                                 title_font=dict(size=18),
                             )
-                            st.plotly_chart(fig_violin, use_container_width=True)
+                            st.plotly_chart(fig_violin, use_container_width=True, key=f"violin_{i}_{col}")
                         
                         series = df_plot[col].dropna()
                         if not series.empty:
@@ -465,7 +470,7 @@ elif navigation == "📊 Visualize Data":
                                 title_font=dict(size=18),
                                 xaxis_tickangle=-45,
                             )
-                            st.plotly_chart(fig_bar, use_container_width=True)
+                            st.plotly_chart(fig_bar, use_container_width=True, key=f"bar_{i}_{col}")
                             
                         with tab_pie:
                             # If cardinality is huge, pie chart is messy. Just standard Plotly Pie
@@ -482,7 +487,7 @@ elif navigation == "📊 Visualize Data":
                                 margin=dict(t=50, l=50, r=50, b=50),
                                 title_font=dict(size=18),
                             )
-                            st.plotly_chart(fig_pie, use_container_width=True)
+                            st.plotly_chart(fig_pie, use_container_width=True, key=f"pie_{i}_{col}")
                         
                         st.info(f"**Interpretation of `{col}` Graph**: The **Bar Chart** visualizes the total record count for each respective category, ranked by frequency. The **Pie (Donut) Chart** provides a proportional view, showing what percentage of the entirety each category represents. Notice which categories dominate, or if there is a severe class imbalance.")
 
@@ -498,17 +503,17 @@ elif navigation == "🧹 Wrangle Data":
         with col1:
             if st.button("Remove Duplicate Rows", use_container_width=True):
                 logger.info("UI Button: Remove Duplicates clicked.")
-                st.session_state["messages"].append({"role": "user", "content": "Remove duplicate rows"})
+                st.session_state["preset_action"] = "Remove duplicate rows"
                 st.rerun()
         with col2:
             if st.button("Drop Missing Values", use_container_width=True):
                 logger.info("UI Button: Drop Missing Values clicked.")
-                st.session_state["messages"].append({"role": "user", "content": "Drop all rows with missing values"})
+                st.session_state["preset_action"] = "Drop all rows with missing values"
                 st.rerun()
         with col3:
             if st.button("Fill Missing (Mean/Mode)", use_container_width=True):
                 logger.info("UI Button: Fill Missing Values clicked.")
-                st.session_state["messages"].append({"role": "user", "content": "Fill missing values with mean for numeric columns and mode for categorical columns"})
+                st.session_state["preset_action"] = "Fill missing values with mean for numeric columns and mode for categorical columns"
                 st.rerun()
         
         st.markdown("---")
