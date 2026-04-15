@@ -143,7 +143,8 @@ if __name__ == "__main__":
             return {"cleaned_data": cleaned_data, "error": None}
         except json.JSONDecodeError:
             logger.error("Failed to parse cleaned JSON output.")
-            return {"error": f"Failed to parse output: {result}"}
+            truncated = result[:500] + "... [TRUNCATED]" if len(result) > 500 else result
+            return {"error": f"Failed to parse output: {truncated}"}
 
     def fix_cleaning_code(self, state: AgentState):
         error = state["error"]

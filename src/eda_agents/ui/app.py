@@ -193,17 +193,37 @@ def render_chat_interface(openai_api_key):
             
             # Check if we hit an interrupt
             new_snapshot = st.session_state["graph"].get_state(config)
+            final_output = result.get("final_output", {})
             
-            if new_snapshot.next:
+            # Sub-graph (worker) interrupt check
+            plan_exists = "plan" in final_output and final_output["plan"] is not None
+            has_executed_results = "wrangled_data" in final_output or "plotly_json" in final_output
+            is_worker_interrupted = plan_exists and not has_executed_results and st.session_state.get("hitl_enabled")
+            
+            if new_snapshot.next or is_worker_interrupted:
                 logger.info("Graph interrupted for approval.")
-                # The state should contain the plan
-                plan = result.get("final_output", {}).get("plan")
+                plan = final_output.get("plan")
+                
                 if not plan:
-                    # Try to find plan in messages if not in final_output
-                    # This can happen if the interrupt happened inside a worker
-                    # but the supervisor hasn't finished its node yet.
-                    # However, with my changes, the worker returns the result including plan.
-                    pass
+                    def _find_plan(obj):
+                        if isinstance(obj, dict):
+                            if "plan" in obj and obj["plan"]:
+                                return obj["plan"]
+                            for k, v in obj.items():
+                                res = _find_plan(v)
+                                if res:
+                                    return res
+                        elif isinstance(obj, list):
+                            for item in obj:
+                                res = _find_plan(item)
+                                if res:
+                                    return res
+                        return None
+                    
+                    plan = _find_plan(result)
+                    
+                if not plan:
+                    plan = f"*[Dev Debug]* Plan could not be found computationally.\nResult keys: `{list(result.keys())}`\nFinal Output keys: `{list(final_output.keys())}`"
                 
                 st.session_state["messages"].append({
                     "role": "assistant", 
@@ -213,7 +233,6 @@ def render_chat_interface(openai_api_key):
                 st.session_state["pending_approval"] = True
                 st.rerun()
             
-            final_output = result.get("final_output", {})
             
             if "wrangled_data" in final_output:
                 logger.info("Data wrangling update detected in graph output.")
