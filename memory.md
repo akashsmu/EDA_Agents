@@ -31,6 +31,10 @@
 
 ## Recent History & Previous Work (Chronological Order - Latest First)
 
+### 0. Show Model Thinking Process in UI
+- Updated `src/eda_agents/ui/app.py` to use LangGraph's `.stream()` execution.
+- Added a `st.status` container to iteratively display node progression (Supervisor routing, Worker execution), providing users with visibility into the multi-agent thought process.
+
 ### 1. UI Bug Fixes: LangGraph Trigger & Streamlit Duplicate Element ID
 - Fixed an interaction bug where data wrangling buttons appended selections to the chat history without signaling the LangGraph agent to execute. Added a `preset_action` state pipeline to seamlessly bridge UI button clicks with the backend autonomous execution loop.
 - Resolved a `streamlit.errors.StreamlitDuplicateElementId` exception crashing the app when viewing iterative visual reports. Added specific, deterministic `key` parameters (e.g. `key=f"chat_img_{msg_idx}"`, `key=f"hist_{i}_{col}"`) to all `st.plotly_chart` rendering calls.
@@ -78,7 +82,7 @@
 ## Current Status & Pending Tasks (Living Tracker)
 *This section must be updated at the end of each work iteration to store context for the next session.*
 
-- **Currently Working On**: Test coverage expansion completed.
+- **Currently Working On**: Show Model Thinking Process in UI (Completed).
 - **Pending/Next Steps**: 
   - (Add tasks here based on user requests in future iterations)
 - **Known Issues/Blockers**: None Currently.

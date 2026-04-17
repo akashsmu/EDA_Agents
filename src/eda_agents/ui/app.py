@@ -168,7 +168,7 @@ def render_chat_interface(openai_api_key):
         # with st.chat_message("user"): # Removed to avoid double render after rerun
         #     st.write(active_input)
 
-        with st.spinner("🤖 Thinking..."):
+        with st.status("🤖 Thinking Process", expanded=True) as status_container:
             # Prepare state
             # If we are resuming, we need to provide the approval message
             initial_state = {
@@ -184,12 +184,28 @@ def render_chat_interface(openai_api_key):
             # Check if we have a state to resume from
             snapshot = st.session_state["graph"].get_state(config)
             
+            input_data = None if snapshot.next else initial_state
+            
             if snapshot.next:
                 logger.info(f"Resuming graph from breakpoint: {snapshot.next}")
-                # If resuming, we pass None as input to just continue with the new message in history
-                result = st.session_state["graph"].invoke(None, config=config)
-            else:
-                result = st.session_state["graph"].invoke(initial_state, config=config)
+                
+            events = st.session_state["graph"].stream(input_data, config=config, stream_mode="updates")
+            
+            for event in events:
+                for node_name, state_update in event.items():
+                    if node_name == "supervisor":
+                        next_worker = state_update.get("next_worker")
+                        if next_worker and next_worker != "FINISH":
+                            st.write(f"👔 **Supervisor** decided to use **{next_worker}**.")
+                        elif next_worker == "FINISH":
+                            st.write("👔 **Supervisor** marked task as complete.")
+                    else:
+                        worker_name = node_name.replace('_worker', '').title()
+                        st.write(f"⚙️ **{worker_name} Agent** completed its execution.")
+                        
+            status_container.update(label="✅ Analysis Complete", state="complete", expanded=False)
+            
+            result = st.session_state["graph"].get_state(config).values
             
             # Check if we hit an interrupt
             new_snapshot = st.session_state["graph"].get_state(config)
