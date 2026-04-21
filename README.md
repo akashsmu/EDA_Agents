@@ -20,7 +20,7 @@ Exploratory Data Analysis is often a repetitive and time-consuming process for d
 - **Visualization**: Plotly (interactive), Matplotlib, Seaborn, Plotnine.
 - **Automated EDA Tools**: Sweetviz, Missingno, PyTimeTK (for time series).
 - **Security**: Sandboxed code execution in secure subprocesses.
-- **DevOps/Testing**: Poetry for dependency management, Pytest for agent reliability.
+- **DevOps/Testing**: Docker & Docker Compose for orchestration, Pytest for agent reliability, pip for dependency management.
 
 ## Key Features
 
@@ -32,6 +32,8 @@ Exploratory Data Analysis is often a repetitive and time-consuming process for d
 - **Autonomous Report Generation**: Combines LLM-driven insights with automated visualization reports (via Sweetviz).
 - **Sandboxed Execution**: Ensures that LLM-generated code is executed safely before results are returned to the user.
 - **Human-in-the-Loop (HITL)**: Support for user approval on suggested cleaning plans before execution.
+- **Agent Transparency**: Real-time display of the multi-agent thinking process in the UI using LangGraph streams.
+- **Factory Pattern**: Standardized agent instantiation via a centralized factory to cleanly manage multiple specialized workers.
 
 ## Outcome & Results
 
@@ -65,7 +67,8 @@ EDA_Agents/
 ├── config/              # Application configuration
 ├── data/                # Sample datasets (if any)
 ├── reports/             # Generated EDA output files
-├── pyproject.toml       # Poetry dependencies
+├── Dockerfile           # Docker image configuration instructions
+├── docker-compose.yml   # Docker Compose orchestration configuration
 └── README.md            # You are here
 ```
 
@@ -79,7 +82,14 @@ EDA_Agents/
 ```bash
 git clone <repository-url>
 cd EDA_Agents
+
+# Local Install
+python3 -m venv eda
+source eda/bin/activate
 pip install -r requirements.txt
+
+# Or run via Docker
+docker-compose up --build
 ```
 
 ### 3. Environment
