@@ -26,40 +26,61 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS for Modern Look (Light/Dark Mode Neutral)
+# Custom CSS for Premium Glassmorphic Look
 st.markdown("""
 <style>
+    @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap');
+    
+    html, body, [class*="css"] {
+        font-family: 'Outfit', sans-serif;
+    }
+    
     .main-header {
-        font-size: 2.5rem;
+        font-family: 'Outfit', sans-serif;
+        font-size: 3rem;
         font-weight: 700;
-        margin-bottom: 1rem;
+        margin-bottom: 0.5rem;
         text-align: center;
+        background: -webkit-linear-gradient(45deg, #FF4B4B, #FF904B);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
     }
     .sub-header {
+        font-family: 'Outfit', sans-serif;
         font-size: 1.25rem;
         text-align: center;
         margin-bottom: 2rem;
         opacity: 0.8;
+        font-weight: 300;
     }
     .card {
+        background: rgba(255, 255, 255, 0.05);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        border-radius: 16px;
         padding: 1.5rem;
-        border-radius: 10px;
-        border: 1px solid rgba(128, 128, 128, 0.2);
         margin-bottom: 1rem;
-        transition: transform 0.2s, box-shadow 0.2s;
+        box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.1);
+        transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
     }
     .card:hover {
         transform: translateY(-5px);
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        border-color: rgba(255, 255, 255, 0.3);
+        box-shadow: 0 12px 40px 0 rgba(31, 38, 135, 0.15);
     }
     .card-title {
-        font-size: 1.2rem;
+        font-family: 'Outfit', sans-serif;
+        font-size: 1.3rem;
         font-weight: 600;
         margin-bottom: 0.5rem;
+        color: inherit;
     }
     .card-text {
+        font-family: 'Outfit', sans-serif;
         font-size: 0.95rem;
         opacity: 0.8;
+        line-height: 1.5;
     }
     /* Fix for font visibility in cards */
     .card-content {
