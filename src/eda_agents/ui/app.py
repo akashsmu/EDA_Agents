@@ -148,6 +148,46 @@ with st.sidebar:
     st.markdown("---")
     st.caption("v1.1.0 | Project Foundation")
 
+def get_visual_pipeline_html(active_node, message=""):
+    nodes = [
+        {"id": "supervisor", "label": "👔 Supervisor"},
+        {"id": "data_cleaning_worker", "label": "🧹 Cleaning"},
+        {"id": "data_wrangling_worker", "label": "🔨 Wrangling"},
+        {"id": "data_visualization_worker", "label": "📊 Visualization"},
+    ]
+    
+    html = '<div style="display: flex; flex-direction: column; gap: 15px; margin-bottom: 15px;">'
+    html += '<div style="display: flex; justify-content: center; align-items: center; gap: 15px; flex-wrap: wrap;">'
+    for node in nodes:
+        is_active = (node["id"] == active_node)
+        border_color = "#FF4B4B" if is_active else "rgba(128,128,128,0.3)"
+        bg_color = "rgba(255,75,75,0.2)" if is_active else "transparent"
+        box_shadow = "0 0 15px rgba(255,75,75,0.5)" if is_active else "none"
+        scale = "scale(1.05)" if is_active else "scale(1)"
+        opacity = "1" if is_active else "0.5"
+        
+        html += f'''
+        <div style="
+            border: 2px solid {border_color};
+            background: {bg_color};
+            border-radius: 8px;
+            padding: 10px 15px;
+            font-family: 'Outfit', sans-serif;
+            font-size: 0.9rem;
+            box-shadow: {box_shadow};
+            transform: {scale};
+            opacity: {opacity};
+            transition: all 0.3s ease;
+            text-align: center;
+        ">
+            {node["label"]}
+        </div>
+        '''
+    html += '</div>'
+    if message:
+        html += f'<div style="text-align: center; font-family: \\'Outfit\\', sans-serif; font-size: 0.95rem; color: #FF4B4B; margin-top: 5px;"><em>{message}</em></div>'
+    html += '</div>'
+    return html
 
 def render_chat_interface(openai_api_key):
     # Initialize Graph
@@ -210,19 +250,28 @@ def render_chat_interface(openai_api_key):
             if snapshot.next:
                 logger.info(f"Resuming graph from breakpoint: {snapshot.next}")
                 
+            visual_placeholder = st.empty()
+            visual_placeholder.markdown(get_visual_pipeline_html("supervisor", "Initializing..."), unsafe_allow_html=True)
+                
             events = st.session_state["graph"].stream(input_data, config=config, stream_mode="updates")
             
             for event in events:
                 for node_name, state_update in event.items():
+                    msg = ""
                     if node_name == "supervisor":
                         next_worker = state_update.get("next_worker")
                         if next_worker and next_worker != "FINISH":
+                            msg = f"Routing to {next_worker.replace('_worker', '').title()} Agent..."
                             st.write(f"👔 **Supervisor** decided to use **{next_worker}**.")
                         elif next_worker == "FINISH":
+                            msg = "Task marked as complete."
                             st.write("👔 **Supervisor** marked task as complete.")
                     else:
                         worker_name = node_name.replace('_worker', '').title()
+                        msg = f"{worker_name} Agent executing tasks..."
                         st.write(f"⚙️ **{worker_name} Agent** completed its execution.")
+                        
+                    visual_placeholder.markdown(get_visual_pipeline_html(node_name, msg), unsafe_allow_html=True)
                         
             status_container.update(label="✅ Analysis Complete", state="complete", expanded=False)
             
