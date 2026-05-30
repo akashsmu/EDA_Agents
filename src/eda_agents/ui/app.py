@@ -97,6 +97,8 @@ def init_session_state():
         st.session_state["graph"] = None
     if "messages" not in st.session_state:
         st.session_state["messages"] = []
+    if "history" not in st.session_state:
+        st.session_state["history"] = []
 
 
 init_session_state()
@@ -146,8 +148,24 @@ with st.sidebar:
         st.session_state["data_raw"] = None
         st.session_state["graph"] = None
         st.session_state["messages"] = []
+        st.session_state["history"] = []
         st.rerun()
 
+    st.markdown("---")
+    
+    if st.session_state.get("history"):
+        st.markdown("### ⏳ State Timeline")
+        st.caption("Click any event to roll back data state.")
+        for idx, event in enumerate(st.session_state["history"]):
+            is_active = (idx == len(st.session_state["history"]) - 1)
+            btn_type = "primary" if is_active else "secondary"
+            if st.button(f"{event['action']}\\n\\n{event['description']}", key=f"hist_btn_{idx}", use_container_width=True, type=btn_type):
+                if not is_active:
+                    st.session_state["data_raw"] = event["data"]
+                    st.session_state["history"] = st.session_state["history"][:idx+1]
+                    st.toast(f"Rolled back to: {event['action']}")
+                    st.rerun()
+                    
     st.markdown("---")
     st.caption("v1.1.0 | Project Foundation")
 
@@ -188,7 +206,7 @@ def get_visual_pipeline_html(active_node, message=""):
         '''
     html += '</div>'
     if message:
-        html += f'<div style="text-align: center; font-family: \\'Outfit\\', sans-serif; font-size: 0.95rem; color: #FF4B4B; margin-top: 5px;"><em>{message}</em></div>'
+        html += f'<div style="text-align: center; font-family: \\\'Outfit\\\', sans-serif; font-size: 0.95rem; color: #FF4B4B; margin-top: 5px;"><em>{message}</em></div>'
     html += '</div>'
     return html
 
@@ -412,7 +430,21 @@ def render_chat_interface(openai_api_key):
             
             if "wrangled_data" in final_output:
                 logger.info("Data wrangling update detected in graph output.")
+                
+                prev_len = len(st.session_state["history"][-1]["data"]) if st.session_state.get("history") else len(st.session_state["data_raw"])
+                new_len = len(final_output["wrangled_data"])
+                diff = new_len - prev_len
+                diff_str = f"({'+' if diff > 0 else ''}{diff} rows)" if diff != 0 else "(values updated)"
+                
+                action_desc = f"🧹 {active_input[:30]}..." if active_input else "🧹 Data wrangling"
+                
                 st.session_state["data_raw"] = final_output["wrangled_data"]
+                st.session_state["history"].append({
+                    "action": action_desc,
+                    "description": diff_str,
+                    "data": final_output["wrangled_data"]
+                })
+                
                 st.toast("✅ Data updated!")
             
             response_content = "Task completed."
@@ -452,6 +484,11 @@ if navigation == "🏠 Home":
             logger.info(f"File uploaded: {uploaded_file.name}")
             df = pd.read_csv(uploaded_file)
             st.session_state["data_raw"] = df.to_dict(orient="records")
+            st.session_state["history"] = [{
+                "action": f"📂 Uploaded {uploaded_file.name}",
+                "description": f"{len(df)} rows",
+                "data": st.session_state["data_raw"]
+            }]
             logger.info(f"Loaded {len(df)} rows into session state.")
             st.rerun()
     else:
@@ -776,6 +813,13 @@ elif navigation == "📋 Deep Reports":
                     st.success("Custom Report Generated!")
                     st.session_state["data_raw"] = result["cleaned_data"]
                     if wrangle_options:
+                        action_desc = f"🧹 Deep Report Wrangling"
+                        diff_str = f"Applied: {', '.join(wrangle_options)}"
+                        st.session_state["history"].append({
+                            "action": action_desc,
+                            "description": diff_str,
+                            "data": result["cleaned_data"]
+                        })
                         st.info("Dataset has been updated in memory based on the selected wrangling methods.")
                     
                     st.markdown("### 📝 Executive Text Summary")
