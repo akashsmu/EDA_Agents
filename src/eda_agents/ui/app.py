@@ -121,10 +121,13 @@ with st.sidebar:
     st.image("https://img.icons8.com/clouds/100/000000/data-configuration.png", width=80)
     st.title("EDA Agents")
     
+    if "navigation_radio" not in st.session_state:
+        st.session_state["navigation_radio"] = "🏠 Home" if st.session_state.get("data_raw") is None else "📊 Visualize Data"
+        
     navigation = st.radio(
         "Navigation",
         options=["🏠 Home", "💬 AI Chat Analysis", "📊 Visualize Data", "🧹 Wrangle Data", "📋 Deep Reports"],
-        index=0 if st.session_state["data_raw"] is None else 2
+        key="navigation_radio"
     )
     logger.debug(f"User navigated to: {navigation}")
     
@@ -188,6 +191,93 @@ def get_visual_pipeline_html(active_node, message=""):
         html += f'<div style="text-align: center; font-family: \\'Outfit\\', sans-serif; font-size: 0.95rem; color: #FF4B4B; margin-top: 5px;"><em>{message}</em></div>'
     html += '</div>'
     return html
+
+def render_health_check_dashboard():
+    if not st.session_state.get("data_raw"):
+        return
+        
+    df = pd.DataFrame(st.session_state["data_raw"])
+    
+    st.markdown("### 🏥 Dataset Health Check")
+    
+    issues_found = []
+    
+    # 1. Check Missing Data
+    missing_cols = df.isnull().sum()
+    missing_cols = missing_cols[missing_cols > 0]
+    if not missing_cols.empty:
+        max_missing_col = missing_cols.idxmax()
+        max_missing_pct = (missing_cols.max() / len(df)) * 100
+        issues_found.append({
+            "type": "Missing Data",
+            "icon": "🔍",
+            "message": f"**{len(missing_cols)} columns** contain missing data (up to {max_missing_pct:.1f}% in `{max_missing_col}`).",
+            "action": "Impute with Mean/Mode",
+            "command": "Impute missing values with mean for numeric columns and mode for categorical columns"
+        })
+        
+    # 2. Check Outliers (Numeric using IQR)
+    numeric_cols = df.select_dtypes(include='number').columns
+    outlier_issues = []
+    for col in numeric_cols:
+        Q1 = df[col].quantile(0.25)
+        Q3 = df[col].quantile(0.75)
+        IQR = Q3 - Q1
+        outliers_count = ((df[col] < (Q1 - 1.5 * IQR)) | (df[col] > (Q3 + 1.5 * IQR))).sum()
+        if outliers_count > 0:
+            outlier_issues.append((col, outliers_count))
+            
+    if outlier_issues:
+        # Sort by most outliers
+        outlier_issues.sort(key=lambda x: x[1], reverse=True)
+        top_col, top_count = outlier_issues[0]
+        issues_found.append({
+            "type": "Outliers Detected",
+            "icon": "⚠️",
+            "message": f"Column `{top_col}` has **{top_count} outliers** (outside 1.5x IQR).",
+            "action": f"Fix {top_col} outliers",
+            "command": f"Remove outliers from column {top_col} using the IQR method"
+        })
+        
+    # 3. Check Class Imbalance (Categorical)
+    cat_cols = df.select_dtypes(exclude='number').columns
+    imbalance_issues = []
+    for col in cat_cols:
+        val_counts = df[col].value_counts(normalize=True)
+        if not val_counts.empty and val_counts.iloc[0] > 0.8: # More than 80% is one class
+            imbalance_issues.append((col, val_counts.iloc[0] * 100))
+            
+    if imbalance_issues:
+        imbalance_issues.sort(key=lambda x: x[1], reverse=True)
+        top_col, top_pct = imbalance_issues[0]
+        issues_found.append({
+            "type": "Class Imbalance",
+            "icon": "📈",
+            "message": f"Categorical column `{top_col}` is highly imbalanced ({top_pct:.1f}% single class).",
+            "action": f"Analyze {top_col}",
+            "command": f"Show a bar chart distribution of {top_col} and explain the imbalance"
+        })
+        
+    if not issues_found:
+        st.success("✅ **Dataset is Healthy!** No major missing values, extreme outliers, or severe class imbalances detected.")
+        return
+        
+    # Render Cards
+    cols = st.columns(len(issues_found))
+    for idx, (col, issue) in enumerate(zip(cols, issues_found)):
+        with col:
+            st.markdown(f"""
+            <div class='card' style='padding: 1rem; border-left: 4px solid #FF4B4B;'>
+                <div style='font-size: 1.2rem; margin-bottom: 0.5rem;'>{issue['icon']} <b>{issue['type']}</b></div>
+                <div style='font-size: 0.9rem; opacity: 0.8; margin-bottom: 1rem;'>{issue['message']}</div>
+            </div>
+            """, unsafe_allow_html=True)
+            if st.button(issue["action"], key=f"health_action_{idx}", use_container_width=True):
+                st.session_state["preset_action"] = issue["command"]
+                st.session_state["navigation_radio"] = "💬 AI Chat Analysis"
+                st.rerun()
+                
+    st.markdown("---")
 
 def render_chat_interface(openai_api_key):
     # Initialize Graph
@@ -366,6 +456,7 @@ if navigation == "🏠 Home":
             st.rerun()
     else:
         st.success("✅ Data Loaded! Use the sidebar to start analyzing.")
+        render_health_check_dashboard()
         df_preview = pd.DataFrame(st.session_state["data_raw"])
         st.dataframe(df_preview.head(10), use_container_width=True)
         st.info(f"Shape: {df_preview.shape[0]} rows, {df_preview.shape[1]} columns")
@@ -384,6 +475,7 @@ elif navigation == "📊 Visualize Data":
         st.warning("Please upload data first.")
     else:
         st.markdown("### 📊 Automated Data Insights")
+        render_health_check_dashboard()
         
         # Get AI Data Explanation globally for this page
         with st.expander("🤖 AI Executive Data Summary", expanded=True):
