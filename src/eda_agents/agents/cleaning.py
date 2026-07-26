@@ -47,8 +47,9 @@ class DataCleaningAgent(BaseAgent):
 
         prompt = ChatPromptTemplate.from_messages([
             ("system", """You are a data engineering architect using Pandas.
-            Analyze the data summary and the user's request.
-            Propose a concise step-by-step plan for data cleaning (handling missing values, outliers, data types, etc.).
+            Analyze the data summary and the user's objective.
+            Propose a concise step-by-step plan for data cleaning that SPECIFICALLY addresses the user's objective.
+            DO NOT add extra generic cleaning steps (like changing data types) unless explicitly requested or absolutely required to achieve the objective.
             Do not write code, just steps.
             """),
             ("user", "Data Summary:\n{summary}\n\nObjective: {instructions}")
@@ -84,6 +85,23 @@ class DataCleaningAgent(BaseAgent):
             ("system", """You are an expert data engineer using Pandas.
             Follow the provided plan to write a function `clean(df: pd.DataFrame)` that performs the cleaning transformations.
             The function must return the modified DataFrame.
+            CRITICAL: Many pandas operations (like dropna, fillna, etc.) return a new dataframe. You MUST assign the result back to `df` (e.g. `df = df.dropna()`) or use `inplace=True`!
+            
+            EXAMPLE OF BAD CODE:
+            ```python
+            def clean(df):
+                df.fillna(0) # WRONG: result is lost!
+                return df
+            ```
+            
+            EXAMPLE OF GOOD CODE:
+            ```python
+            def clean(df):
+                df = df.fillna(0) # CORRECT: result is assigned!
+                return df
+            ```
+            
+            Do exactly what the plan says and nothing more.
             Write ONLY the code block.
             Plan: {plan}
             """),

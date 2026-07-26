@@ -135,6 +135,9 @@ with st.sidebar:
     
     st.markdown("---")
     openai_api_key = st.text_input("OpenAI API Key", type="password", help="Required for agents to work.")
+    if openai_api_key != st.session_state.get("openai_api_key"):
+        st.session_state["openai_api_key"] = openai_api_key
+        st.session_state["graph"] = None
     
     st.markdown("---")
     st.session_state["hitl_enabled"] = st.checkbox(
@@ -206,7 +209,7 @@ def get_visual_pipeline_html(active_node, message=""):
         '''
     html += '</div>'
     if message:
-        html += f'<div style="text-align: center; font-family: \\\'Outfit\\\', sans-serif; font-size: 0.95rem; color: #FF4B4B; margin-top: 5px;"><em>{message}</em></div>'
+        html += f'<div style="text-align: center; font-family: \'Outfit\', sans-serif; font-size: 0.95rem; color: #FF4B4B; margin-top: 5px;"><em>{message}</em></div>'
     html += '</div>'
     return html
 
@@ -238,9 +241,15 @@ def render_health_check_dashboard():
     numeric_cols = df.select_dtypes(include='number').columns
     outlier_issues = []
     for col in numeric_cols:
+        if df[col].nunique() <= 10:
+            continue
+            
         Q1 = df[col].quantile(0.25)
         Q3 = df[col].quantile(0.75)
         IQR = Q3 - Q1
+        if IQR == 0:
+            continue
+            
         outliers_count = ((df[col] < (Q1 - 1.5 * IQR)) | (df[col] > (Q3 + 1.5 * IQR))).sum()
         if outliers_count > 0:
             outlier_issues.append((col, outliers_count))
@@ -280,6 +289,10 @@ def render_health_check_dashboard():
         st.success("✅ **Dataset is Healthy!** No major missing values, extreme outliers, or severe class imbalances detected.")
         return
         
+    def handle_health_action(cmd):
+        st.session_state["preset_action"] = cmd
+        st.session_state["navigation_radio"] = "💬 AI Chat Analysis"
+        
     # Render Cards
     cols = st.columns(len(issues_found))
     for idx, (col, issue) in enumerate(zip(cols, issues_found)):
@@ -290,10 +303,7 @@ def render_health_check_dashboard():
                 <div style='font-size: 0.9rem; opacity: 0.8; margin-bottom: 1rem;'>{issue['message']}</div>
             </div>
             """, unsafe_allow_html=True)
-            if st.button(issue["action"], key=f"health_action_{idx}", use_container_width=True):
-                st.session_state["preset_action"] = issue["command"]
-                st.session_state["navigation_radio"] = "💬 AI Chat Analysis"
-                st.rerun()
+            st.button(issue["action"], key=f"health_action_{idx}", use_container_width=True, on_click=handle_health_action, args=(issue["command"],))
                 
     st.markdown("---")
 
@@ -316,7 +326,9 @@ def render_chat_interface(openai_api_key):
                 st.plotly_chart(msg["image"], key=f"chat_img_{msg_idx}")
             if "plan" in msg and msg["plan"]:
                 with st.expander("📝 Recommended Plan", expanded=True):
-                    st.markdown(msg["plan"])
+                    st.markdown(msg["plan"], unsafe_allow_html=True)
+            if "preview_data" in msg and msg["preview_data"] is not None:
+                st.dataframe(msg["preview_data"])
 
     user_input = st.chat_input("Ask about your data (e.g., 'Show Age distribution', 'Drop columns X')")
     
@@ -386,17 +398,30 @@ def render_chat_interface(openai_api_key):
             result = st.session_state["graph"].get_state(config).values
             
             # Check if we hit an interrupt
-            new_snapshot = st.session_state["graph"].get_state(config)
+            new_snapshot = st.session_state["graph"].get_state(config, subgraphs=True)
             final_output = result.get("final_output", {})
+            
+            # Helper to extract plan from subgraph tasks
+            def _find_plan_in_tasks(tasks):
+                for task in tasks:
+                    if task.state and task.state.values and "plan" in task.state.values and task.state.values["plan"]:
+                        return task.state.values["plan"]
+                    if hasattr(task, 'tasks') and task.tasks:
+                        res = _find_plan_in_tasks(task.tasks)
+                        if res:
+                            return res
+                return None
+            
+            subgraph_plan = _find_plan_in_tasks(new_snapshot.tasks) if hasattr(new_snapshot, 'tasks') and new_snapshot.tasks else None
             
             # Sub-graph (worker) interrupt check
             plan_exists = "plan" in final_output and final_output["plan"] is not None
-            has_executed_results = "wrangled_data" in final_output or "plotly_json" in final_output
-            is_worker_interrupted = plan_exists and not has_executed_results and st.session_state.get("hitl_enabled")
+            has_executed_results = any(k in final_output for k in ["wrangled_data", "cleaned_data", "plotly_json"])
+            is_worker_interrupted = (plan_exists or subgraph_plan) and not has_executed_results and st.session_state.get("hitl_enabled")
             
             if new_snapshot.next or is_worker_interrupted:
                 logger.info("Graph interrupted for approval.")
-                plan = final_output.get("plan")
+                plan = final_output.get("plan") or subgraph_plan
                 
                 if not plan:
                     def _find_plan(obj):
@@ -428,40 +453,55 @@ def render_chat_interface(openai_api_key):
                 st.rerun()
             
             
-            if "wrangled_data" in final_output:
-                logger.info("Data wrangling update detected in graph output.")
+            data_update_key = "wrangled_data" if "wrangled_data" in final_output else "cleaned_data" if "cleaned_data" in final_output else None
+            
+            if data_update_key:
+                logger.info(f"Data update ({data_update_key}) detected in graph output.")
+                
+                # Sanitize dataframe to prevent PyArrow mixed-type crashes
+                df_new = pd.DataFrame(final_output[data_update_key])
+                for col in df_new.columns:
+                    if df_new[col].dtype == 'object':
+                        df_new[col] = df_new[col].apply(lambda x: str(x) if pd.notnull(x) else None)
+                final_output[data_update_key] = df_new.to_dict(orient="records")
                 
                 prev_len = len(st.session_state["history"][-1]["data"]) if st.session_state.get("history") else len(st.session_state["data_raw"])
-                new_len = len(final_output["wrangled_data"])
+                new_len = len(final_output[data_update_key])
                 diff = new_len - prev_len
                 diff_str = f"({'+' if diff > 0 else ''}{diff} rows)" if diff != 0 else "(values updated)"
                 
-                action_desc = f"🧹 {active_input[:30]}..." if active_input else "🧹 Data wrangling"
+                action_desc = f"🧹 {active_input[:30]}..." if active_input else "🧹 Data update"
                 
-                st.session_state["data_raw"] = final_output["wrangled_data"]
+                st.session_state["data_raw"] = final_output[data_update_key]
                 st.session_state["history"].append({
                     "action": action_desc,
                     "description": diff_str,
-                    "data": final_output["wrangled_data"]
+                    "data": final_output[data_update_key]
                 })
                 
                 st.toast("✅ Data updated!")
             
             response_content = "Task completed."
             response_image = None
-            
+            response_preview = None
             if "plotly_json" in final_output:
                 logger.info("Visualization result received.")
                 response_image = final_output["plotly_json"]
                 response_content = "Here is the visualization:"
-            elif "wrangled_data" in final_output:
-                response_content = "I have updated the data as requested."
+            elif data_update_key:
+                response_content = "I have updated the data as requested. Here is a sample of the new data:"
+                response_preview = pd.DataFrame(final_output[data_update_key]).head(5)
             
             if "error" in final_output and final_output["error"]:
                 logger.error(f"Graph execution returned error: {final_output['error']}")
                 response_content = f"❌ Error: {final_output['error']}"
 
-            st.session_state["messages"].append({"role": "assistant", "content": response_content, "image": response_image})
+            st.session_state["messages"].append({
+                "role": "assistant", 
+                "content": response_content, 
+                "image": response_image,
+                "preview_data": response_preview
+            })
             st.rerun() # Refresh to show new messages
 
 # --- Home / Landing Page ---

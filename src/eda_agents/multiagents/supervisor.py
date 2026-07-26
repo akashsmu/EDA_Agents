@@ -3,6 +3,7 @@ import operator
 from typing import Annotated, TypedDict, Union, List, Dict, Any, Literal
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, SystemMessage
 from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.runnables.config import RunnableConfig
 from langchain_openai import ChatOpenAI
 from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.memory import MemorySaver
@@ -71,11 +72,11 @@ class SupervisorAgent(BaseAgent):
             - 'visualization': Creates charts and plots using Plotly.
 
             Analyze the conversation and the current data state to decide who should work next.
-            If the task is complete, respond with 'FINISH'.
+            If the task is complete (e.g. the last message says a step was completed and there is nothing else to do), respond with 'FINISH'.
             
             Current Workers: cleaning, wrangling, visualization, FINISH.
             
-            Respond ONLY with the name of the next worker or 'FINISH'.
+            Respond ONLY with the EXACT name of the next worker or 'FINISH'. Do not output any other text or punctuation.
             """),
             ("placeholder", "{messages}")
         ])
@@ -84,6 +85,9 @@ class SupervisorAgent(BaseAgent):
         # Convert messages to a format the prompt template understands if necessary
         response = chain.invoke({"messages": state["messages"]})
         next_worker = response.content.strip().lower()
+
+        if "completed" in next_worker:
+            next_worker = "finish"
 
         # Simple validation/normalization
         valid_workers = ["cleaning", "wrangling", "visualization", "finish"]
@@ -97,7 +101,7 @@ class SupervisorAgent(BaseAgent):
         logger.info(f"Supervisor: Handing off to {next_worker}")
         return {"next_worker": next_worker}
 
-    def cleaning_node(self, state: SupervisorState):
+    def cleaning_node(self, state: SupervisorState, config: RunnableConfig):
         logger.info("Supervisor: Invoking Cleaning Worker...")
         agent = self.workers["cleaning"]
         
@@ -108,7 +112,7 @@ class SupervisorAgent(BaseAgent):
             "hitl_enabled": state.get("hitl_enabled", False)
         }
         
-        result = agent.invoke(agent_state)
+        result = agent.invoke(agent_state, config=config)
         
         # Update supervisor state with worker results
         # Assuming the worker returns 'cleaned_data' or similar
@@ -120,7 +124,7 @@ class SupervisorAgent(BaseAgent):
             "final_output": result # Pass along for the UI
         }
 
-    def wrangling_node(self, state: SupervisorState):
+    def wrangling_node(self, state: SupervisorState, config: RunnableConfig):
         logger.info("Supervisor: Invoking Wrangling Worker...")
         agent = self.workers["wrangling"]
         
@@ -130,7 +134,7 @@ class SupervisorAgent(BaseAgent):
             "hitl_enabled": state.get("hitl_enabled", False)
         }
         
-        result = agent.invoke(agent_state)
+        result = agent.invoke(agent_state, config=config)
         
         new_data = result.get("wrangled_data", state["data_raw"])
         
@@ -140,7 +144,7 @@ class SupervisorAgent(BaseAgent):
             "final_output": result # Pass along for the UI
         }
 
-    def visualization_node(self, state: SupervisorState):
+    def visualization_node(self, state: SupervisorState, config: RunnableConfig):
         logger.info("Supervisor: Invoking Visualization Worker...")
         agent = self.workers["visualization"]
         
@@ -150,7 +154,7 @@ class SupervisorAgent(BaseAgent):
             "hitl_enabled": state.get("hitl_enabled", False)
         }
         
-        result = agent.invoke(agent_state)
+        result = agent.invoke(agent_state, config=config)
         
         # Visualization doesn't usually change data_raw, but returns a plotly_json
         return {

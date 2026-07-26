@@ -47,8 +47,9 @@ class DataWranglingAgent(BaseAgent):
 
         prompt = ChatPromptTemplate.from_messages([
             ("system", """You are a data engineering architect using Pandas.
-            Analyze the data summary and the user's request.
-            Propose a concise step-by-step plan for the data transformation/cleaning.
+            Analyze the data summary and the user's objective.
+            Propose a concise step-by-step plan for data wrangling that SPECIFICALLY addresses the user's objective.
+            DO NOT add extra generic wrangling steps unless explicitly requested or absolutely required to achieve the objective.
             Do not write code, just steps.
             """),
             ("user", "Data Summary:\n{summary}\n\nObjective: {instructions}")
@@ -82,8 +83,25 @@ class DataWranglingAgent(BaseAgent):
 
         prompt = ChatPromptTemplate.from_messages([
             ("system", """You are an expert data engineer using Pandas.
-            Follow the provided plan to write a function `wrangle(df: pd.DataFrame)` that performs the transformations.
+            Follow the provided plan to write a function `wrangle(df: pd.DataFrame)` that performs the data transformations.
             The function must return the modified DataFrame.
+            CRITICAL: Many pandas operations (like get_dummies, drop, etc.) return a new dataframe. You MUST assign the result back to `df` (e.g. `df = pd.get_dummies(df)`) or use `inplace=True`!
+            
+            EXAMPLE OF BAD CODE:
+            ```python
+            def wrangle(df):
+                pd.get_dummies(df, columns=['gender']) # WRONG: result is lost!
+                return df
+            ```
+            
+            EXAMPLE OF GOOD CODE:
+            ```python
+            def wrangle(df):
+                df = pd.get_dummies(df, columns=['gender']) # CORRECT: result is assigned!
+                return df
+            ```
+            
+            Do exactly what the plan says and nothing more.
             Write ONLY the code block.
             Plan: {plan}
             """),
