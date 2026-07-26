@@ -1,88 +1,76 @@
-# EDA Agents - Project Memory & Guidelines
+<div align="center">
+  <img src="https://img.shields.io/badge/EDA_Agents-Data_Analysis-FF4B4B?style=for-the-badge&logo=pandas&logoColor=white" />
+  <img src="https://img.shields.io/badge/Status-Active-brightgreen?style=for-the-badge" />
+  <img src="https://img.shields.io/badge/Version-v1.1.0-blue?style=for-the-badge" />
+  <h1>🧠 Project Memory & Architecture Map</h1>
+</div>
 
-**Summary**: This file serves as the core knowledge base and execution guideline for the EDA Agents project. It tracks the system's architecture, tools, environment guidelines, and recent history.
-
-**Topics**: `#guidelines`, `#architecture`, `#workflow`, `#history`, `#status`
+> **Summary**: This file serves as the core knowledge base and execution guideline for the **EDA Agents** project. It tracks the system's architecture, tools, environment guidelines, and recent history. Keep it strictly updated.
 
 ---
 
-## Important Instructions & Workflow Rules
+### 🚨 Critical Directives
+| Type | Directive | Command / Note |
+| :--- | :--- | :--- |
+| 🛠️ **Env** | **ALWAYS** activate virtual env before commands | `source eda/bin/activate` |
+| 📂 **Path** | Operate strictly within project root | `/Users/akashsmu/Desktop/EDA_Agents` |
+| 🚀 **Run** | Launch Streamlit web interface | `streamlit run src/eda_agents/ui/app.py` |
+| 🧪 **Test** | Execute Pytest suite | `pytest tests/` |
+| 📦 **Pkg** | Do NOT use Poetry for changes | Use standard `pip` only. |
 
-1. **Environment Activation**: ALWAYS activate the `eda` virtual environment before running any commands in the terminal.
-   ```bash
-   source eda/bin/activate
-   ```
-2. **Project Path**: Root directory for operations is strictly within the `eda_agents` project (`/Users/akashsmu/Desktop/EDA_Agents`).
-3. **Running the Application**: The application is built on Streamlit.
-   ```bash
-   streamlit run src/eda_agents/ui/app.py
-   ```
-4. **Running Tests**: Run tests via `pytest`.
-   ```bash
-   pytest tests/
-   ```
-5. Dont use poetry for any changes in the project. Use pip instead.
+---
 
-## Architectural Context
+### 🏗️ System Architecture
 
-- **Multi-Agent Supervisor System**: A central supervisor (`seq_supervisor`/`pandas_data_analyst.py`) coordinates specialized sub-agents.
-- **Factory Pattern**: Agents (`DataVisualizationAgent`, `DataWranglingAgent`, `DataCleaningAgent`) are instantiated using a centralized factory pattern.
-- **Frameworks**: LangChain & LangGraph for orchestration; Pandas, OpenPyXL, Plotly, Streamlit for data handling and UI.
+<details open>
+<summary><b>View Component Diagram</b></summary>
 
-## Recent History & Previous Work (Chronological Order - Latest First)
+```mermaid
+graph TD
+    UI[UI: app.py] -->|Human-in-the-Loop| SUP[Supervisor Agent]
+    SUP -->|Decision: cleaning| CA[🧹 Data Cleaning Agent]
+    SUP -->|Decision: wrangling| WA[🔨 Data Wrangling Agent]
+    SUP -->|Decision: visualization| VA[📊 Visualization Agent]
+    CA -->|Sanitized Data| SUP
+    WA -->|Transformed Data| SUP
+    VA -->|Plotly JSON| SUP
+    SUP -->|FINISH| UI
+```
+</details>
 
-### 0. Show Model Thinking Process in UI
-- Updated `src/eda_agents/ui/app.py` to use LangGraph's `.stream()` execution.
-- Added a `st.status` container to iteratively display node progression (Supervisor routing, Worker execution), providing users with visibility into the multi-agent thought process.
+- **Orchestration**: `SupervisorAgent` uses `LangGraph` and `StateGraph` for cyclic task routing and HITL pausing.
+- **Factory Pattern**: Core agents inherit from `BaseAgent` and use standard state schemas.
+- **State Checkpointing**: Uses `MemorySaver` thread persistence for undo/redo data timelines.
 
-### 1. UI Bug Fixes: LangGraph Trigger & Streamlit Duplicate Element ID
-- Fixed an interaction bug where data wrangling buttons appended selections to the chat history without signaling the LangGraph agent to execute. Added a `preset_action` state pipeline to seamlessly bridge UI button clicks with the backend autonomous execution loop.
-- Resolved a `streamlit.errors.StreamlitDuplicateElementId` exception crashing the app when viewing iterative visual reports. Added specific, deterministic `key` parameters (e.g. `key=f"chat_img_{msg_idx}"`, `key=f"hist_{i}_{col}"`) to all `st.plotly_chart` rendering calls.
+---
 
-### 2. Enhanced Visualizations for EDA Tabs
-- Improved the 'Missing Value Analysis' tab by adding overview metrics (Total Rows, Columns, Missing Percentage), tabbed views for missingno plots, and detailed Markdown descriptions of what each missingity plot signifies.
-- Refactored the 'Feature Distributions' tab to use interactive Plotly visualizations. Users can multi-select features which generate rich histograms (for numeric data) and bar charts (for categorical data) complete with descriptive statistics (`Mean`, `Median`, etc.), comprehensive axis labeling, dynamic color scales, and a descriptive interpretation for each generated plot.
+### 📜 Execution History (Latest First)
 
-### 3. Data Summary & Display Improvements
-- Improved the display of the narrative summary generated by the `explain_data` tool to make it more visually appealing with highlighted insights.
-- Fixed a PyArrow serialization error encountered when displaying the descriptive statistics table.
+<div style="padding: 15px; border-radius: 8px; border: 1px solid rgba(255, 75, 75, 0.3); background: rgba(255, 75, 75, 0.05); margin-bottom: 20px;">
+<h4>🔥 Current Iteration: Agent Reliability & Dashboards</h4>
+<ul>
+  <li><b>Supervisor Logic:</b> Rebuilt <code>app.py</code> and <code>supervisor.py</code> to fix LangGraph state accumulation, properly injecting <code>RunnableConfig</code> and dynamically resetting thread caching for new user requests.</li>
+  <li><b>Data Integrity:</b> Eradicated mixed-type <code>PyArrow</code> Streamlit crashes by adding strict object sanitization.</li>
+  <li><b>Code Generation:</b> Injected strong Few-Shot Prompting to workers so Pandas code utilizes correct variable reassignment (<code>inplace=True</code>), successfully fixing execution drops.</li>
+  <li><b>UI Enhancements:</b> Upgraded to a <b>Glassmorphic Dashboard</b> with Dataset Health Checks, automated outlier/imputation Action Cards, data previews, and an animated State Timeline.</li>
+</ul>
+</div>
 
-### 4. README & Documentation Updates
-- Updated `README.md` to accurately reflect the latest project codebase, ensuring a comprehensive, icon-free layout with up-to-date file structure and feature matrices.
+<details>
+<summary><b>Archive: Iterations 0 - 10</b></summary>
+<br>
 
-### 5. UI Integration with Supervisor
-- Completely refactored `src/eda_agents/ui/app.py` to utilize the multi-agent supervisor functionality instead of isolated agents.
+* **UI Flow & Visuals**: Upgraded the Missing Value & Feature Distributions tab with interactive Plotly visualizations. Fixed Streamlit duplicate ID crashes. Added the dynamic Agent Flowchart thinking process box to chat.
+* **Refactoring & Setup**: Fully transitioned from isolated agents to the Multi-Agent Supervisor system. Created factory patterns for `DataCleaningAgent`, `DataWranglingAgent`, and `DataVisualizationAgent`.
+* **Testing & Infrastructure**: Integrated Docker and Compose (`Dockerfile`, `docker-compose.yml`). Decoupled PyTest suite from live OpenAI keys via MagicMock.
+</details>
 
-### 6. Test Suite Stabilization
-- Fixed multiple failing unit tests:
-  - Addressed `openai.OpenAIError` in `test_pandas_analyst.py`.
-  - Fixed `AttributeError: 'StructuredTool' object has no attribute 'invoke'` in `test_tools_report.py`.
-  - Resolved `AssertionError` in `test_tools_report.py` regarding LLM summary generations.
+---
 
-### 7. Multi-Agent Supervisor Creation
-- Implemented `multiagents/pandas_data_analyst.py` to serve as a supervisor agent capable of chaining multiple agents in sequence to handle complex queries natively.
+### 📋 Living Task Tracker
+*This tracker defines the immediate focus and prevents regression.*
 
-### 8. Agent Specialized Capabilities & Factory Pattern
-- Added `DataCleaningAgent` to focus on automated data quality (nulls, outliers, type formatting).
-- Refactored existing agents (`DataVisualizationAgent` and `DataWranglingAgent`) to leverage the Factory design pattern, streamlining instantiation and lifecycle management.
-
-### 9. Docker Integration
-- Created a comprehensive `Dockerfile` using `python:3.10-slim`, establishing a non-root user and installing dependencies natively via `pip`.
-- Configured a `.dockerignore` file to exclude local caches (`__pycache__`, `.pytest_cache`) and the `eda` virtual environment.
-- Created `docker-compose.yml` to orchestrate build process, manage port binding (`8501`), `.env` injection, and volume mounting for `logs/` and `reports/`.
-
-### 10. Comprehensive Framework Libraries Test
-- Created and updated `tests/test_libraries.py` to ensure all core frameworks required by the project (LangChain, LangGraph, Pandas, OpenPyXL, Plotly, Streamlit) are not only importable but also functionally sound (e.g. creating DataFrames, StateGraphs, Workbooks, etc.), as required by the documentation.
-
-### 11. Comprehensive Test Suite Refactor
-- Expanded unit tests across the whole project (`test_tools_dataframe.py`, `test_agents_wrangling.py`, `test_tools_report.py`, `test_supervisor.py`, `test_pandas_analyst.py`).
-- Mapped OpenAI endpoints to use `unittest.mock` `MagicMock` to prevent real API calls and make executions stable.
-- Addressed boundary anomalies including missing elements, bad inputs, and edge configurations to prevent pipeline exceptions.
-
-## Current Status & Pending Tasks (Living Tracker)
-*This section must be updated at the end of each work iteration to store context for the next session.*
-
-- **Currently Working On**: Show Model Thinking Process in UI (Completed).
-- **Pending/Next Steps**: 
-  - (Add tasks here based on user requests in future iterations)
-- **Known Issues/Blockers**: None Currently.
+- [x] **Agent Routing**: Prevent supervisor "completed" hallucination.
+- [x] **State Persistence**: Enable UNDO/REDO data manipulation snapshots in sidebar.
+- [x] **UI Polish**: Convert plain UI into a highly visual, interactive interface.
+- [ ] **Next Goal**: *Awaiting User Directives.*

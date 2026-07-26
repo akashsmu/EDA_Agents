@@ -68,11 +68,11 @@ class SupervisorAgent(BaseAgent):
         prompt = ChatPromptTemplate.from_messages([
             ("system", """You are a supervisor managing a team of data analysis agents:
             - 'cleaning': Handles missing values, outliers, and data type fixes. Use this BEFORE wrangling if the data is messy.
-            - 'wrangling': Performs transformations, filtering, sorting, and aggregations.
+            - 'wrangling': Performs transformations, filtering, sorting, aggregations, encoding, and value replacements.
             - 'visualization': Creates charts and plots using Plotly.
 
-            Analyze the conversation and the current data state to decide who should work next.
-            If the task is complete (e.g. the last message says a step was completed and there is nothing else to do), respond with 'FINISH'.
+            Read the chat history. If the LAST message is from the user with a new request, route to the appropriate worker.
+            If the LAST message is from an assistant confirming a step was completed, you MUST respond with 'FINISH'.
             
             Current Workers: cleaning, wrangling, visualization, FINISH.
             

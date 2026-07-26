@@ -190,23 +190,8 @@ def get_visual_pipeline_html(active_node, message=""):
         scale = "scale(1.05)" if is_active else "scale(1)"
         opacity = "1" if is_active else "0.5"
         
-        html += f'''
-        <div style="
-            border: 2px solid {border_color};
-            background: {bg_color};
-            border-radius: 8px;
-            padding: 10px 15px;
-            font-family: 'Outfit', sans-serif;
-            font-size: 0.9rem;
-            box-shadow: {box_shadow};
-            transform: {scale};
-            opacity: {opacity};
-            transition: all 0.3s ease;
-            text-align: center;
-        ">
-            {node["label"]}
-        </div>
-        '''
+        style = f"border: 2px solid {border_color}; background: {bg_color}; border-radius: 8px; padding: 10px 15px; font-family: 'Outfit', sans-serif; font-size: 0.9rem; box-shadow: {box_shadow}; transform: {scale}; opacity: {opacity}; transition: all 0.3s ease; text-align: center;"
+        html += f'<div style="{style}">{node["label"]}</div>'
     html += '</div>'
     if message:
         html += f'<div style="text-align: center; font-family: \'Outfit\', sans-serif; font-size: 0.95rem; color: #FF4B4B; margin-top: 5px;"><em>{message}</em></div>'
@@ -355,7 +340,8 @@ def render_chat_interface(openai_api_key):
             initial_state = {
                 "messages": [HumanMessage(content=active_input)],
                 "data_raw": st.session_state["data_raw"],
-                "hitl_enabled": st.session_state.get("hitl_enabled", False)
+                "hitl_enabled": st.session_state.get("hitl_enabled", False),
+                "final_output": {}
             }
             
             logger.info("Invoking graph...")
