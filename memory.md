@@ -1,7 +1,7 @@
 <div align="center">
   <img src="https://img.shields.io/badge/EDA_Agents-Data_Analysis-FF4B4B?style=for-the-badge&logo=pandas&logoColor=white" />
   <img src="https://img.shields.io/badge/Status-Active-brightgreen?style=for-the-badge" />
-  <img src="https://img.shields.io/badge/Version-v1.1.0-blue?style=for-the-badge" />
+  <img src="https://img.shields.io/badge/Version-v1.2.0-blue?style=for-the-badge" />
   <h1>🧠 Project Memory & Architecture Map</h1>
 </div>
 
@@ -31,9 +31,15 @@ graph TD
     SUP -->|Decision: cleaning| CA[🧹 Data Cleaning Agent]
     SUP -->|Decision: wrangling| WA[🔨 Data Wrangling Agent]
     SUP -->|Decision: visualization| VA[📊 Visualization Agent]
+    SUP -->|Decision: eda| EDA[🔬 EDA Tools Agent]
+    SUP -->|Decision: feature_engineering| FEA[⚙️ Feature Engineering Agent]
+    SUP -->|Decision: sklearn_ml| MLA[🤖 Sklearn ML Agent]
     CA -->|Sanitized Data| SUP
     WA -->|Transformed Data| SUP
     VA -->|Plotly JSON| SUP
+    EDA -->|Artifacts| SUP
+    FEA -->|Engineered Data| SUP
+    MLA -->|ML Results| SUP
     SUP -->|FINISH| UI
 ```
 </details>
@@ -73,4 +79,12 @@ graph TD
 - [x] **Agent Routing**: Prevent supervisor "completed" hallucination.
 - [x] **State Persistence**: Enable UNDO/REDO data manipulation snapshots in sidebar.
 - [x] **UI Polish**: Convert plain UI into a highly visual, interactive interface.
+- [x] **v1.2.0**: Integrated business-science/ai-data-science-team features + new innovations:
+  - Feature Engineering Agent (encodes, scales, datetime decomposition, LLM-generated code)
+  - Sklearn ML Agent (AutoML training with feature importance)
+  - Data Loader Tools Agent (file system browsing + multi-format loading)
+  - Smart Schema Tagger EDA tool (auto-classifies columns: ID/target/categorical/etc.)
+  - Pipeline Export as Python script
+  - Supervisor now routes 6 workers (+ feature_engineering, sklearn_ml)
+  - New UI pages: ⚙️ Feature Engineering, 🤖 ML Training, 📁 Data Loader
 - [ ] **Next Goal**: *Awaiting User Directives.*

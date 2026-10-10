@@ -29,11 +29,47 @@ Exploratory Data Analysis is often a repetitive and time-consuming process for d
     - **Visualization Agent**: Generates interactive Plotly charts with automatic column profiling and alias resolution.
     - **Wrangling Agent**: Performs complex data transformations and explains the logic in plain English.
     - **Cleaning Agent**: Specifically focused on data quality—identifying and fixing missing values, outliers, and formatting issues.
+    - **EDA Tools Agent**: A tool-calling (ReAct) analyst that picks from 11 EDA tools to answer questions without modifying data (see below).
 - **Autonomous Report Generation**: Combines LLM-driven insights with automated visualization reports (via Sweetviz).
 - **Sandboxed Execution**: Ensures that LLM-generated code is executed safely before results are returned to the user.
 - **Human-in-the-Loop (HITL)**: Support for user approval on suggested cleaning plans before execution.
 - **Agent Transparency**: Real-time display of the multi-agent thinking process in the UI using LangGraph streams.
 - **Factory Pattern**: Standardized agent instantiation via a centralized factory to cleanly manage multiple specialized workers.
+
+## EDA Tools Agent
+
+`EDAToolsAgent` ([src/eda_agents/agents/eda_tools.py](src/eda_agents/agents/eda_tools.py)) is modelled on
+[ai-data-science-team's EDA Tools Agent](https://github.com/business-science/ai-data-science-team/blob/master/examples/ds_agents/eda_tools_agent.ipynb).
+The supervisor routes analytical questions to it ("is X related to Y?", "how clean is this data?"). It can also be used on its own:
+
+```python
+from eda_agents.agents.eda_tools import EDAToolsAgent
+
+agent = EDAToolsAgent(llm)
+agent.invoke_agent("Does contract type affect churn?", data_raw=df)
+agent.get_ai_message()                        # markdown answer
+agent.get_tool_calls()                        # ['analyze_relationship']
+agent.get_artifacts()["analyze_relationship"] # p-value, effect size, plotly figure...
+```
+
+| Tool | What it does |
+|---|---|
+| `explain_data` / `describe_dataset` | Narrative summary and `describe()` statistics |
+| `visualize_missing` | missingno matrix, bar and heatmap plots |
+| `generate_correlation_funnel` | Binarized correlation against a target value (pytimetk, or a built-in pandas fallback) |
+| `generate_sweetviz_report` / `generate_dtale_report` | Full HTML report / interactive explorer |
+| `assess_data_quality` | 0–100 quality score and grade. Flags missing data, duplicates, constant columns, numbers stored as text, mixed types, inconsistent labels and ID-like columns, each with a suggested fix |
+| `detect_outliers` | IQR or z-score outliers per column, with a standardized box plot |
+| `analyze_correlations` | Pearson/Spearman/Kendall matrix, strongest pairs, multicollinearity warnings |
+| `profile_distributions` | Skewness, kurtosis, normality test, shape label and suggested transform |
+| `analyze_relationship` | Picks the right test for two columns (correlation, t-test/ANOVA, chi-square) and reports the p-value, effect size and a plain-English conclusion |
+
+Design notes:
+- **The data never goes to the LLM.** Tools get the dataset through `InjectedState("data_raw")`. The model sees only the schema (column names, types and category values, added to the system prompt) and the tools' text summaries.
+- **Tool failures don't crash the run.** Errors (e.g. a wrong column name) come back to the model as error messages so it can retry, and a model-call limit stops runaway loops.
+- **One-click fixes in the UI.** Each issue in a data quality report has a 🛠️ Fix button that sends the suggested fix to the supervisor, which routes it to the cleaning agent.
+
+See [examples/eda_tools_agent.ipynb](examples/eda_tools_agent.ipynb) for a walkthrough. The Home page also has a **sample churn dataset** with built-in quality issues to try the tools on.
 
 ## Outcome & Results
 
@@ -116,6 +152,5 @@ pytest tests/
 - Integration with local LLMs (Ollama/LlamaCpp) for privacy.
 - Advanced Predictive EDA (automated regression/classification baselines).
 - Exporting agent-generated code as notebook snippets.
-
 
 
