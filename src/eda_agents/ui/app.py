@@ -504,53 +504,25 @@ def render_chat_interface(openai_api_key):
             status_container.update(label="✅ Analysis Complete", state="complete", expanded=False)
             
             result = st.session_state["graph"].get_state(config).values
-            
-            # Check if we hit an interrupt
-            new_snapshot = st.session_state["graph"].get_state(config, subgraphs=True)
+
+            # Check if we hit an interrupt (outer supervisor graph only — inner agents no longer use interrupt_after)
+            new_snapshot = st.session_state["graph"].get_state(config)
             final_output = result.get("final_output", {})
-            
-            # Helper to extract plan from subgraph tasks
-            def _find_plan_in_tasks(tasks):
-                for task in tasks:
-                    if task.state and task.state.values and "plan" in task.state.values and task.state.values["plan"]:
-                        return task.state.values["plan"]
-                    if hasattr(task, 'tasks') and task.tasks:
-                        res = _find_plan_in_tasks(task.tasks)
-                        if res:
-                            return res
-                return None
-            
-            subgraph_plan = _find_plan_in_tasks(new_snapshot.tasks) if hasattr(new_snapshot, 'tasks') and new_snapshot.tasks else None
-            
-            # Sub-graph (worker) interrupt check
-            plan_exists = "plan" in final_output and final_output["plan"] is not None
-            has_executed_results = any(k in final_output for k in ["wrangled_data", "cleaned_data", "plotly_json"])
-            is_worker_interrupted = (plan_exists or subgraph_plan) and not has_executed_results and st.session_state.get("hitl_enabled")
+
+            # HITL: plan ready but code not yet executed (should_generate returned "wait")
+            plan_exists = bool(final_output.get("plan"))
+            has_executed_results = any(k in final_output for k in [
+                "wrangled_data", "cleaned_data", "plotly_json",
+                "engineered_data", "ml_results", "eda_artifacts", "ai_message",
+            ])
+            is_worker_interrupted = plan_exists and not has_executed_results and st.session_state.get("hitl_enabled")
             
             if new_snapshot.next or is_worker_interrupted:
-                logger.info("Graph interrupted for approval.")
-                plan = final_output.get("plan") or subgraph_plan
-                
+                logger.info("Graph interrupted for HITL approval.")
+                plan = final_output.get("plan") or ""
+
                 if not plan:
-                    def _find_plan(obj):
-                        if isinstance(obj, dict):
-                            if "plan" in obj and obj["plan"]:
-                                return obj["plan"]
-                            for k, v in obj.items():
-                                res = _find_plan(v)
-                                if res:
-                                    return res
-                        elif isinstance(obj, list):
-                            for item in obj:
-                                res = _find_plan(item)
-                                if res:
-                                    return res
-                        return None
-                    
-                    plan = _find_plan(result)
-                    
-                if not plan:
-                    plan = f"*[Dev Debug]* Plan could not be found computationally.\nResult keys: `{list(result.keys())}`\nFinal Output keys: `{list(final_output.keys())}`"
+                    plan = "*(Plan not available — please approve to proceed with the recommended steps.)*"
                 
                 st.session_state["messages"].append({
                     "role": "assistant", 
@@ -1126,12 +1098,14 @@ elif navigation == "⚙️ Feature Engineering":
                 with st.spinner("Running feature engineering pipeline…"):
                     instr = fe_instructions or "Apply default feature engineering steps."
                     from langchain_core.messages import HumanMessage as HM
+                    import time as _time
+                    _fe_config = {"configurable": {"thread_id": f"fe_{int(_time.time() * 1000)}"}}
                     result = agent.invoke({
                         "messages": [HM(content=instr)],
                         "data_raw": st.session_state["data_raw"],
                         "hitl_enabled": False,
                         "target_variable": target_var,
-                    })
+                    }, config=_fe_config)
                     engineered = result.get("engineered_data")
                     if engineered:
                         df_eng = pd.DataFrame(engineered)

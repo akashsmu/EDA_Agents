@@ -47,7 +47,4 @@ def create_coding_agent_graph(
 
     workflow.add_edge(fix_node_name, execute_node_name)
 
-    return workflow.compile(
-        checkpointer=MemorySaver(),
-        interrupt_after=["recommend_steps"]
-    )
+    return workflow.compile(checkpointer=MemorySaver())
