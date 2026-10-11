@@ -56,7 +56,10 @@ def describe_dataset(
     logger.info("Executing tool: describe_dataset")
     df = pd.DataFrame(data_raw)
     description_df = df.describe(include="all")
-    content = "Summary statistics computed using pandas describe()."
+    content = (
+        "Summary statistics computed using pandas describe():\n"
+        f"{description_df.T.to_string(max_rows=60)}"
+    )
     flattened = description_df.reset_index().rename(columns={"index": "stat"})
     artifact = {"describe_df": flattened.to_dict(orient="list")}
     logger.info("Dataset description computed successfully.")
@@ -94,7 +97,7 @@ def visualize_missing(
         plt.tight_layout()
         buf = BytesIO()
         plt.savefig(buf, format="png")
-        plt.close()
+        plt.close("all")  # missingno opens its own figure in addition to ours
         buf.seek(0)
         return base64.b64encode(buf.getvalue()).decode("utf-8")
 
@@ -102,9 +105,88 @@ def visualize_missing(
     encoded_plots["bar_plot"] = create_and_encode_plot(msno.bar, "bar")
     encoded_plots["heatmap_plot"] = create_and_encode_plot(msno.heatmap, "heatmap")
 
-    content = "Missing data visualizations (matrix, bar, heatmap) generated."
+    missing = df.isna().sum()
+    missing = missing[missing > 0].sort_values(ascending=False)
+    missing_text = (
+        "\n".join(f"- {col}: {n} missing ({n / len(df):.1%})" for col, n in missing.items())
+        if not missing.empty else "No missing values in any column."
+    )
+    content = (
+        "Missing data visualizations (matrix, bar, heatmap) generated.\n"
+        f"Missing values per column:\n{missing_text}"
+    )
     logger.info("Missing data visualizations completed.")
     return content, encoded_plots
+
+
+def _binarize(df: pd.DataFrame, n_bins: int, thresh_infreq: float, name_infreq: str) -> pd.DataFrame:
+    """pandas-only equivalent of pytimetk's binarize(one_hot=True)."""
+    parts = []
+    for col in df.columns:
+        s = df[col]
+        if pd.api.types.is_numeric_dtype(s) and not pd.api.types.is_bool_dtype(s) and s.nunique() > n_bins:
+            binned = pd.qcut(s, q=n_bins, duplicates="drop")
+            labels = binned.cat.rename_categories(lambda iv: f"{iv.left:g}_{iv.right:g}").astype(object).where(binned.notna(), "nan")
+        else:
+            labels = s.astype(str)
+            # Pure identifier columns carry no signal and explode the one-hot width.
+            if labels.nunique() == len(labels) and len(labels) > 20:
+                continue
+            freq = labels.value_counts(normalize=True)
+            labels = labels.where(~labels.isin(freq[freq < thresh_infreq].index), name_infreq)
+        parts.append(pd.get_dummies(labels, prefix=col, prefix_sep="__").astype(int))
+    return pd.concat(parts, axis=1)
+
+
+def _correlation_funnel_fallback(df, target, target_bin_index, corr_method, n_bins, thresh_infreq, name_infreq):
+    import plotly.express as px
+    from eda_agents.utils.plotting import fig_to_dict
+
+    df_binarized = _binarize(df, n_bins, thresh_infreq, name_infreq)
+    matching = [c for c in df_binarized.columns if c.startswith(f"{target}__")]
+    if not matching:
+        raise ValueError(f"Target '{target}' could not be binarized.")
+    if isinstance(target_bin_index, str) and f"{target}__{target_bin_index}" in matching:
+        full_target = f"{target}__{target_bin_index}"
+    else:
+        try:
+            full_target = matching[int(target_bin_index)]
+        except (ValueError, IndexError):
+            full_target = matching[-1]
+    logger.info(f"Using target column: {full_target}")
+
+    corr = df_binarized.corrwith(df_binarized[full_target], method=corr_method)
+    df_correlated = pd.DataFrame({
+        "feature": [c.split("__", 1)[0] for c in corr.index],
+        "bin": [c.split("__", 1)[1] for c in corr.index],
+        "correlation": corr.values.round(4),
+    }).dropna()
+    df_correlated = df_correlated[df_correlated["feature"] != target]
+    df_correlated = df_correlated.reindex(df_correlated["correlation"].abs().sort_values(ascending=False).index)
+
+    # Funnel: features ordered by their strongest bin, strongest at the top.
+    feature_order = df_correlated.groupby("feature")["correlation"].apply(lambda s: s.abs().max()).sort_values().index.tolist()
+    fig = px.scatter(
+        df_correlated, x="correlation", y="feature", text="bin", color="correlation",
+        color_continuous_scale="RdBu_r", range_color=[-1, 1],
+        category_orders={"feature": feature_order[::-1]},
+        title=f"Correlation Funnel: {full_target}",
+    )
+    fig.update_traces(textposition="top center", marker=dict(size=10))
+    fig.add_vline(x=0, line_dash="dash", line_color="gray")
+    fig.update_layout(height=max(400, 32 * len(feature_order)), xaxis_range=[-1, 1])
+
+    top = df_correlated.head(10)
+    content = (
+        f"Correlation funnel for target '{full_target}'. Strongest associations "
+        f"(positive = more likely {full_target}):\n{top.to_string(index=False)}"
+    )
+    artifact = {
+        "correlation_data": df_correlated.to_dict(orient="list"),
+        "plot_image": None,
+        "plotly_figure": fig_to_dict(fig),
+    }
+    return content, artifact
 
 
 @tool(response_format="content_and_artifact")
@@ -120,20 +202,36 @@ def generate_correlation_funnel(
     """
     Tool: generate_correlation_funnel
     Description:
-        Correlation analysis using the correlation funnel method (pytimetk).
+        Correlation analysis using the correlation funnel method: every feature is binarized
+        (numeric columns into quantile bins, categories one-hot encoded) and each bin is
+        correlated against one bin of the target. Shows which feature values are most
+        associated with the target outcome (e.g. Churn=Yes). Uses pytimetk when installed,
+        otherwise a built-in pandas implementation.
+
+    Parameters:
+        target (str): Target column name.
+        target_bin_index (int | str): Which target bin to compare against, e.g. "Yes" or -1 (last bin).
+        corr_method (str): "pearson", "spearman" or "kendall".
+        n_bins (int): Number of quantile bins for numeric features.
+        thresh_infreq (float): Categories rarer than this fraction are lumped into name_infreq.
     """
     logger.info(f"Executing tool: generate_correlation_funnel (target: {target})")
     try:
         import pytimetk as tk
     except ImportError:
-        logger.error("pytimetk library not found.")
-        raise ImportError(
-            "Please install 'pytimetk': pip install pytimetk"
-        )
-    
+        tk = None
+        logger.info("pytimetk not installed; using built-in correlation funnel.")
+
     import plotly.io as pio
 
     df = pd.DataFrame(data_raw)
+    if target not in df.columns:
+        raise ValueError(f"Target '{target}' not found. Available columns: {list(df.columns)}")
+
+    if tk is None:
+        return _correlation_funnel_fallback(
+            df, target, target_bin_index, corr_method, n_bins, thresh_infreq, name_infreq
+        )
 
     # Binarize
     logger.debug("Binarizing data for correlation funnel.")
@@ -189,7 +287,11 @@ def generate_correlation_funnel(
         logger.warning(f"Interactive plot failed: {e}")
         fig_dict = {"error": str(e)}
 
-    content = f"Correlation funnel info for target '{full_target}'."
+    top = df_correlated.head(10)
+    content = (
+        f"Correlation funnel for target '{full_target}'. Strongest associations:\n"
+        f"{top.to_string(index=False)}"
+    )
     artifact = {
         "correlation_data": df_correlated.to_dict(orient="list"),
         "plot_image": encoded,
@@ -216,10 +318,11 @@ def generate_sweetviz_report(
     logger.info(f"Executing tool: generate_sweetviz_report (target: {target})")
     try:
         import sweetviz as sv
-    except ImportError:
-        logger.error("sweetviz library not found.")
+    except ImportError as e:
+        logger.error(f"sweetviz could not be imported: {e}")
+        # On Python 3.12+ sweetviz also needs setuptools (it imports pkg_resources).
         raise ImportError(
-            "Please install 'sweetviz': pip install sweetviz"
+            f"sweetviz could not be imported ({e}). Try: pip install sweetviz 'setuptools<81'"
         )
     
     # Handle numpy warning
