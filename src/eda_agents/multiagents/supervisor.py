@@ -1,5 +1,6 @@
 import json
 import operator
+import time
 from typing import Annotated, TypedDict, Union, List, Dict, Any, Literal
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, SystemMessage
 from langchain_core.prompts import ChatPromptTemplate
@@ -118,18 +119,25 @@ class SupervisorAgent(BaseAgent):
         logger.info(f"Supervisor: Handing off to {next_worker}")
         return {"next_worker": next_worker}
 
+    def _make_inner_config(self, worker_name: str) -> dict:
+        """Fresh thread_id per invocation prevents stale checkpointer state."""
+        return {"configurable": {"thread_id": f"{worker_name}_{int(time.time() * 1000)}"}}
+
     def cleaning_node(self, state: SupervisorState, config: RunnableConfig):
         logger.info("Supervisor: Invoking Cleaning Worker...")
         agent = self.workers["cleaning"]
+        hitl = state.get("hitl_enabled", False)
         agent_state = {
             "messages": state["messages"],
             "data_raw": state["data_raw"],
-            "hitl_enabled": state.get("hitl_enabled", False),
+            "hitl_enabled": hitl,
         }
-        result = agent.invoke(agent_state, config=config)
+        result = agent.invoke(agent_state, config=self._make_inner_config("cleaning"))
         new_data = result.get("cleaned_data") or result.get("wrangled_data") or state["data_raw"]
+        executed = bool(result.get("cleaned_data"))
+        msg = "Cleaning step completed." if executed else "Data cleaning plan is ready, awaiting approval."
         return {
-            "messages": [AIMessage(content="Cleaning step completed.")],
+            "messages": [AIMessage(content=msg)],
             "data_raw": new_data,
             "final_output": result,
         }
@@ -137,15 +145,18 @@ class SupervisorAgent(BaseAgent):
     def wrangling_node(self, state: SupervisorState, config: RunnableConfig):
         logger.info("Supervisor: Invoking Wrangling Worker...")
         agent = self.workers["wrangling"]
+        hitl = state.get("hitl_enabled", False)
         agent_state = {
             "messages": state["messages"],
             "data_raw": state["data_raw"],
-            "hitl_enabled": state.get("hitl_enabled", False),
+            "hitl_enabled": hitl,
         }
-        result = agent.invoke(agent_state, config=config)
-        new_data = result.get("wrangled_data", state["data_raw"])
+        result = agent.invoke(agent_state, config=self._make_inner_config("wrangling"))
+        new_data = result.get("wrangled_data") or state["data_raw"]
+        executed = bool(result.get("wrangled_data"))
+        msg = "Wrangling step completed." if executed else "Data wrangling plan is ready, awaiting approval."
         return {
-            "messages": [AIMessage(content="Wrangling step completed.")],
+            "messages": [AIMessage(content=msg)],
             "data_raw": new_data,
             "final_output": result,
         }
@@ -153,14 +164,17 @@ class SupervisorAgent(BaseAgent):
     def visualization_node(self, state: SupervisorState, config: RunnableConfig):
         logger.info("Supervisor: Invoking Visualization Worker...")
         agent = self.workers["visualization"]
+        hitl = state.get("hitl_enabled", False)
         agent_state = {
             "messages": state["messages"],
             "data_raw": state["data_raw"],
-            "hitl_enabled": state.get("hitl_enabled", False),
+            "hitl_enabled": hitl,
         }
-        result = agent.invoke(agent_state, config=config)
+        result = agent.invoke(agent_state, config=self._make_inner_config("visualization"))
+        executed = bool(result.get("plotly_json"))
+        msg = "Visualization created." if executed else "Visualization plan is ready, awaiting approval."
         return {
-            "messages": [AIMessage(content="Visualization created.")],
+            "messages": [AIMessage(content=msg)],
             "final_output": result,
         }
 
@@ -189,7 +203,7 @@ class SupervisorAgent(BaseAgent):
             "data_raw": state["data_raw"],
             "hitl_enabled": state.get("hitl_enabled", False),
         }
-        result = agent.invoke(agent_state, config=config)
+        result = agent.invoke(agent_state, config=self._make_inner_config("feature_engineering"))
         engineered = result.get("engineered_data")
         new_data = engineered if engineered else state["data_raw"]
         n_cols_before = len(list(state["data_raw"][0].keys())) if state["data_raw"] else 0
@@ -216,7 +230,7 @@ class SupervisorAgent(BaseAgent):
             "data_raw": state["data_raw"],
             "hitl_enabled": state.get("hitl_enabled", False),
         }
-        result = agent.invoke(agent_state, config=config)
+        result = agent.invoke(agent_state, config=self._make_inner_config("sklearn_ml"))
         ml_results = result.get("ml_results", {})
         task = ml_results.get("task_type", "unknown")
         algo = ml_results.get("algorithm", "")
