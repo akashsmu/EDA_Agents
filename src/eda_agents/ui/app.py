@@ -467,14 +467,24 @@ def render_chat_interface(openai_api_key):
             }
             
             logger.info("Invoking graph...")
-            # Use the same thread_id for persistence
-            config = {"configurable": {"thread_id": "1"}}
-            
-            # Check if we have a state to resume from
+            # Use a per-request thread_id so each conversation turn starts from
+            # a clean checkpoint and there is no stale interrupt state.
+            import time as _t
+            # Preserve the thread_id when resuming a pending HITL approval.
+            # For every other request, generate a fresh thread_id so stale
+            # checkpoint state from earlier turns cannot bleed into a new turn.
+            _hitl_pending = st.session_state.pop("_hitl_pending_thread", None)
+            if _hitl_pending:
+                st.session_state["chat_thread_id"] = _hitl_pending
+            else:
+                st.session_state["chat_thread_id"] = f"chat_{int(_t.time() * 1000)}"
+            config = {"configurable": {"thread_id": st.session_state["chat_thread_id"]}}
+
+            # Check if we have a state to resume from (only possible for the same thread within a turn)
             snapshot = st.session_state["graph"].get_state(config)
-            
+
             input_data = None if snapshot.next else initial_state
-            
+
             if snapshot.next:
                 logger.info(f"Resuming graph from breakpoint: {snapshot.next}")
                 
@@ -525,11 +535,13 @@ def render_chat_interface(openai_api_key):
                     plan = "*(Plan not available — please approve to proceed with the recommended steps.)*"
                 
                 st.session_state["messages"].append({
-                    "role": "assistant", 
+                    "role": "assistant",
                     "content": "I've analyzed your request and prepared a plan. Please review it below:",
                     "plan": plan
                 })
                 st.session_state["pending_approval"] = True
+                # Keep the same thread_id so the resume picks up the right checkpoint
+                st.session_state["_hitl_pending_thread"] = st.session_state.get("chat_thread_id", "")
                 st.rerun()
             
             
@@ -1100,40 +1112,50 @@ elif navigation == "⚙️ Feature Engineering":
                     from langchain_core.messages import HumanMessage as HM
                     import time as _time
                     _fe_config = {"configurable": {"thread_id": f"fe_{int(_time.time() * 1000)}"}}
-                    result = agent.invoke({
-                        "messages": [HM(content=instr)],
-                        "data_raw": st.session_state["data_raw"],
-                        "hitl_enabled": False,
-                        "target_variable": target_var,
-                    }, config=_fe_config)
-                    engineered = result.get("engineered_data")
-                    if engineered:
-                        df_eng = pd.DataFrame(engineered)
-                        n_before = len(df_fe.columns)
-                        n_after = len(df_eng.columns)
-                        st.success(f"✅ Done! Columns: {n_before} → {n_after} | Rows: {len(df_eng):,}")
-                        st.dataframe(df_eng.head(10), use_container_width=True)
+                    try:
+                        result = agent.invoke({
+                            "messages": [HM(content=instr)],
+                            "data_raw": st.session_state["data_raw"],
+                            "hitl_enabled": False,
+                            "target_variable": target_var,
+                        }, config=_fe_config)
+                        engineered = result.get("engineered_data")
+                        # Treat None and empty list as failure; a real result has rows
+                        if engineered is not None and len(engineered) > 0:
+                            df_eng = pd.DataFrame(engineered)
+                            n_before = len(df_fe.columns)
+                            n_after = len(df_eng.columns)
+                            st.success(f"✅ Done! Columns: {n_before} → {n_after} | Rows: {len(df_eng):,}")
+                            st.dataframe(df_eng.head(10), use_container_width=True)
 
-                        apply_col, _ = st.columns([1, 3])
-                        if apply_col.button("💾 Apply & Update Dataset", type="primary"):
-                            st.session_state["data_raw"] = engineered
-                            st.session_state["history"].append({
-                                "action": "⚙️ Feature Engineering",
-                                "description": f"{n_before}→{n_after} cols",
-                                "data": engineered,
-                            })
-                            st.toast("✅ Engineered dataset applied!")
-                            st.rerun()
+                            apply_col, _ = st.columns([1, 3])
+                            if apply_col.button("💾 Apply & Update Dataset", type="primary"):
+                                st.session_state["data_raw"] = engineered
+                                st.session_state["history"].append({
+                                    "action": "⚙️ Feature Engineering",
+                                    "description": f"{n_before}→{n_after} cols",
+                                    "data": engineered,
+                                })
+                                st.toast("✅ Engineered dataset applied!")
+                                st.rerun()
 
-                        if result.get("plan"):
-                            with st.expander("📝 Engineering Plan"):
-                                st.markdown(result["plan"])
-                        if result.get("code"):
-                            with st.expander("🧑‍💻 Generated Code"):
-                                st.code(result["code"], language="python")
-                    else:
-                        error = result.get("error", "Unknown error.")
-                        st.error(f"Feature engineering failed: {error}")
+                            if result.get("plan"):
+                                with st.expander("📝 Engineering Plan"):
+                                    st.markdown(result["plan"])
+                            if result.get("code"):
+                                with st.expander("🧑‍💻 Generated Code"):
+                                    st.code(result["code"], language="python")
+                        else:
+                            raw_error = result.get("error") or ""
+                            if engineered is not None and len(engineered) == 0:
+                                st.error("Feature engineering produced an empty dataset. Check the generated code for filtering issues.")
+                            else:
+                                st.error(f"Feature engineering failed: {raw_error or 'No output produced — check logs.'}")
+                            if result.get("code"):
+                                with st.expander("🧑‍💻 Generated Code (inspect for errors)"):
+                                    st.code(result["code"], language="python")
+                    except Exception as fe_exc:
+                        st.error(f"Feature engineering raised an exception: {fe_exc}")
 
         st.markdown("---")
         st.markdown("#### 📤 Export Pipeline as Python Script")

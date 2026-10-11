@@ -49,7 +49,7 @@ class DataVisualizationAgent(BaseAgent):
     def recommend_steps(self, state: AgentState):
         logger.info("Generating recommended steps for visualization...")
         df = pd.DataFrame(state["data_raw"])
-        instructions = state["messages"][-1].content
+        instructions = self._get_intent(state["messages"])
 
         # --- Phase 5: enriched context with profile, aliases, units ---
         context_str, profile = build_prompt_context(df, instructions)
@@ -90,7 +90,7 @@ class DataVisualizationAgent(BaseAgent):
     def generate_code(self, state: AgentState):
         logger.info("Generating visualization code based on plan...")
         plan = state.get("plan", "Visualize the data based on instructions.")
-        instructions = state["messages"][-1].content
+        instructions = self._get_intent(state["messages"])
 
         # --- Phase 5: rebuild context for code-gen prompt ---
         df = pd.DataFrame(state["data_raw"])

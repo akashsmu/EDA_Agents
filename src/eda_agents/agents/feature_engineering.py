@@ -78,7 +78,7 @@ class FeatureEngineeringAgent(BaseAgent):
         logger.info("FeatureEngineering: generating plan...")
         df = pd.DataFrame(state["data_raw"])
         summary = get_dataframe_summary(df, n_sample=5)[0]
-        instructions = state["messages"][-1].content
+        instructions = self._get_intent(state["messages"])
         target = state.get("target_variable") or self._target_variable or "None"
 
         prompt = ChatPromptTemplate.from_messages([

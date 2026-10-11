@@ -80,22 +80,24 @@ class SupervisorAgent(BaseAgent):
         logger.info("Supervisor: Determining next step...")
 
         prompt = ChatPromptTemplate.from_messages([
-            ("system", """You are a supervisor managing a team of data science agents:
-            - 'cleaning': Handles missing values, outliers, and data type fixes. Use BEFORE wrangling if data is messy.
-            - 'wrangling': Performs transformations, filtering, sorting, aggregations, encoding, and value replacements.
-            - 'visualization': Creates a specific custom chart using Plotly (e.g. "scatter of Age vs Fare").
-            - 'eda': Answers analytical questions WITHOUT modifying data: dataset overviews, summary statistics,
-              missing-data analysis, data quality scores, outlier detection, correlation matrices and correlation funnels,
-              distribution/skewness profiling, statistical tests, Sweetviz/D-Tale reports, smart schema tagging.
-            - 'feature_engineering': Builds ML-ready features: encodes categoricals, creates datetime features,
-              drops ID/constant columns, scales numerics. Use BEFORE training a model.
-            - 'sklearn_ml': Trains a scikit-learn classification or regression model, reports accuracy/metrics
-              and feature importances. Use AFTER feature engineering or when the user asks to train/predict/classify.
+            ("system", """You are a supervisor managing a team of data science agents. Route to exactly one worker or FINISH.
 
-            Read the chat history. If the LAST message is from the user with a new request, route to the appropriate worker.
-            If the LAST message is from an assistant confirming a step was completed, respond with 'FINISH'.
+ROUTING RULES (apply in order):
+1. 'eda'          — ANY question or analysis request that does NOT modify data:
+                    "assess", "analyze", "tell me about", "describe", "explain", "report", "summarise",
+                    "data quality", "what should I fix", "outliers", "missing values overview",
+                    "correlation", "distribution", "statistics", "schema", "profile".
+                    → USE 'eda' even when the user says "tell me what to fix first" — that is a question, not an action.
+2. 'visualization' — user explicitly asks for a chart, plot, graph, or figure.
+3. 'cleaning'     — user explicitly asks to APPLY a fix: drop/remove/fill/impute/replace/handle missing values or outliers.
+4. 'wrangling'    — user asks to transform, filter, sort, aggregate, merge, rename, encode, or add/create columns.
+5. 'feature_engineering' — user asks to engineer features, prepare for ML, encode + scale, or the word "features".
+6. 'sklearn_ml'   — user asks to train, predict, classify, fit, or evaluate a model.
+7. FINISH         — the LAST message is from an assistant confirming a worker step was completed (contains "completed" or "created").
 
-            Respond ONLY with the EXACT name of the next worker or 'FINISH'. No other text.
+If the LAST user message is "Approve and proceed" or similar approval, re-route to the SAME worker that last posted a "plan is ready" message.
+
+Respond ONLY with the EXACT worker name or 'FINISH'. No other text.
             """),
             ("placeholder", "{messages}")
         ])

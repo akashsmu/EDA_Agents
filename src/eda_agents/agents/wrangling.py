@@ -43,7 +43,7 @@ class DataWranglingAgent(BaseAgent):
         logger.info("Generating recommended steps for data wrangling...")
         df = pd.DataFrame(state["data_raw"])
         summary = get_dataframe_summary(df, n_sample=5)[0]
-        instructions = state["messages"][-1].content
+        instructions = self._get_intent(state["messages"])
 
         prompt = ChatPromptTemplate.from_messages([
             ("system", """You are a data engineering architect using Pandas.
@@ -79,7 +79,7 @@ class DataWranglingAgent(BaseAgent):
     def generate_wrangling_code(self, state: AgentState):
         logger.info("Generating data wrangling code based on plan...")
         plan = state.get("plan", "Clean the data as requested.")
-        instructions = state["messages"][-1].content
+        instructions = self._get_intent(state["messages"])
 
         prompt = ChatPromptTemplate.from_messages([
             ("system", """You are an expert data engineer using Pandas.
